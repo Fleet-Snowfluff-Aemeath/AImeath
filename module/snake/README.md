@@ -100,3 +100,10 @@ cd build
 - `getState()` 使用 `boost::json::object` + `boost::json::serialize()` 生成合法 JSON 状态
 - `extern "C"` API 与 gomoku/pacman 模块一致，支持 `dlopen` / `dlsym` 动态加载
 - `atexit()` 注册终端恢复，确保异常退出时回显和光标恢复正常
+
+## 相关文档
+
+- [include/README.md](include/README.md) — 头文件说明
+- [src/README.md](src/README.md) — 源文件实现
+- [test/README.md](test/README.md) — 单元测试
+- [benchmark/README.md](benchmark/README.md) — 性能基准测试

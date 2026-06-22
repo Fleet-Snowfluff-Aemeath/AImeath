@@ -71,3 +71,10 @@ cd build
 - `extern "C"` API 与 snake/gomoku 模块一致，支持 `dlopen` / `dlsym` 动态加载
 - 豆子生成数量自动截断不超过网格容量
 - 游戏结束后所有 tick 被忽略，分数保持不变
+
+## 相关文档
+
+- [include/README.md](include/README.md) — 头文件说明
+- [src/README.md](src/README.md) — 源文件实现
+- [test/README.md](test/README.md) — 单元测试
+- [benchmark/README.md](benchmark/README.md) — 性能基准测试

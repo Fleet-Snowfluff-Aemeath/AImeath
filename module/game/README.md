@@ -71,3 +71,8 @@ make bench_game
 - **宏消除样板**：`GAME_API_COMMON()` 一行替代每模块 5 个 `extern "C"` 函数实现
 - **方向逻辑共享**：snake 和 pacman 共用 `Direction` / `isOppositeDir()` / `applyDir()`，由 game 模块提供
 - **动态加载**：`GameModuleCache` 提供线程安全的 dlopen 加载和缓存，供 demo 和 gameserver 共用
+
+## 相关文档
+
+- [test/README.md](test/README.md) — 单元测试
+- [benchmark/README.md](benchmark/README.md) — 性能基准测试

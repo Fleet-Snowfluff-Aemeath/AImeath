@@ -94,3 +94,10 @@ make bench                 # 编译全部基准测试
 - **异常安全**：ThreadPool 任务异常写入 stderr 不崩溃；Timer 回调异常由 ThreadPool 隔离不 `std::terminate`；EventManager 单回调异常不扩散
 - **锁粒度优化**：Timer 释放锁后提交回调到 ThreadPool；EventManager 锁内复制信号、锁外执行；Logger 缓冲完整消息后一次写锁
 - **自动清理**：EventManager `subscriberCount` 在返回 0 时自动 erase 空信号，防止 map 无限增长
+
+## 相关文档
+
+- [include/README.md](include/README.md) — 头文件说明
+- [src/README.md](src/README.md) — 源文件实现
+- [test/README.md](test/README.md) — 单元测试
+- [benchmark/README.md](benchmark/README.md) — 性能基准测试
