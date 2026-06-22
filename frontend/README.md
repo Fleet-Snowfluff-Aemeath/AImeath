@@ -31,6 +31,7 @@
 | `/gomoku` | `GamePage` (game=gomoku) | 五子棋（鼠标点击落子） |
 | `/pacman` | `GamePage` (game=pacman) | 吃豆豆（方向键控制） |
 | `/go` | `GamePage` (game=go) | 围棋（鼠标点击落子） |
+| `/chat` | `ChatPage` | 气泡聊天室，自动追加"喵" |
 
 ## 前提条件
 
@@ -74,6 +75,7 @@ ip addr show eth0 | grep -oP 'inet \K[\d.]+'
 | 五子棋 | **鼠标点击**棋盘格子落子 | 开始新游戏 / 认输 |
 | 吃豆豆 | **方向键**（↑↓←→）控制移动 | 开始 / 暂停 / 结束 |
 | 围棋 | **鼠标点击**棋盘交叉点落子 | 开始新游戏 / 认输 / 放弃 |
+| Chat | **键盘输入**文本 | WebSocket 发送，自动追加"喵"返回 |
 
 ## 后端协议
 

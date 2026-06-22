@@ -61,6 +61,8 @@ cd build
 - C API 接收 `char* (*)(const char*)`，内部包装为 `std::function`，自动管理 C 字符串内存
 - `chat_process()` 返回 `malloc` 分配的 C 字符串，调用者负责释放
 - 支持多个独立实例并行处理
+- 游戏服务器（`backend/main.cpp`）通过 `dlopen` 加载 `libchat.so`，在 `/chat` 路径提供 WebSocket 聊天服务
+- 前端 `ChatPage.vue` 通过 `/chat` 路径连接，气泡聊天室风格
 
 ## 相关文档
 

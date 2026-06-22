@@ -32,6 +32,12 @@ const categories = [
     ],
   },
   {
+    title: '工具模块',
+    items: [
+      { name: 'Chat 喵', url: '/chat', desc: '气泡聊天室，自动追加"喵"' },
+    ],
+  },
+  {
     title: '外部链接',
     items: [
       { name: 'Vue 3', url: 'https://vuejs.org/', desc: '官方文档' },

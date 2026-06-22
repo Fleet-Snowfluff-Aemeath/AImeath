@@ -3,6 +3,7 @@ import { createRouter, createWebHashHistory } from 'vue-router'
 import App from './App.vue'
 import HomePage from './views/HomePage.vue'
 import GamePage from './views/GamePage.vue'
+import ChatPage from './views/ChatPage.vue'
 import { INFO } from './config/games.js'
 
 const routes = [
@@ -12,6 +13,7 @@ const routes = [
     component: GamePage,
     props: { gameType: key },
   })),
+  { path: '/chat', component: ChatPage },
 ]
 
 const router = createRouter({
