@@ -37,9 +37,7 @@ struct TermSession
         boost::json::object msg;
         msg["type"] = "output";
         msg["text"] = text;
-        std::string serialized = boost::json::serialize(
-            boost::json::array{std::move(msg)});
-        output_cb(output_udata, serialized.c_str());
+        output_cb(output_udata, boost::json::serialize(msg).c_str());
     }
 
     // ---- Get global PTY I/O context (singleton) ----
