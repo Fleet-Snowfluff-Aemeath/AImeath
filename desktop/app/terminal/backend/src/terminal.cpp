@@ -93,11 +93,7 @@ void app_on_input(void* p, const char* input_json)
             }
 
             ses->start_with_async(cmd);
-
-            // Give shell time to print prompt (async reads will pick it up)
-            usleep(150000);
-            std::string init = ses->flushOutput();
-            ses->push_output(init);
+            // Prompt 由异步 PTY 读取自动推送，无需手动等待
         }
         else if (action == "stdin")
         {
