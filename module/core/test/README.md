@@ -1,6 +1,6 @@
 # test/ —— 单元测试（Google Test）
 
-共 76 个测试用例，覆盖全部 5 个组件。
+共 88 个测试用例，覆盖全部 6 个组件。
 
 ## 文件说明
 
@@ -58,6 +58,12 @@
 - `WsFrameRoundTrip` / `WsFrameEmptyPayload` / `WsFrameLargePayload` / `WsFrameTruncated`：WebSocket 帧编码/解码
 - `InitialState` / `SetConnectTimeout`：状态管理
 - `ConstructWithLogger`：Logger 复用
+
+### ws_server_test.cpp（10 个测试）
+- 常量验证：`DEFAULT_PORT`、`DEFAULT_IO_THREADS`、`DEFAULT_FALLBACK_THREADS`
+- 命名空间验证：`key::APP`/`key::TEXT`/`key::GAME`、`appname::CHAT`/`appname::SNAKE`
+- `Listener` 构造和 shutdown（默认端口和自定义端口）
+- `Session` 构造（有/无 fallback_pool）
 
 ## 运行
 

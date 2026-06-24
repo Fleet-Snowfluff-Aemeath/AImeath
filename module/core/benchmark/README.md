@@ -1,6 +1,6 @@
 # benchmark/ —— 性能基准测试（Google Benchmark）
 
-四个可执行文件，分别测量各组件的延迟和吞吐量。测试平台：24 核 AMD @ 3.07 GHz（GCC 11.4, Release）。
+六个可执行文件，分别测量各组件的延迟和吞吐量。测试平台：24 核 AMD @ 3.07 GHz（GCC 11.4, Release）。
 
 ## 文件说明
 
@@ -44,6 +44,10 @@
 - `BM_EventPriorityFire` —— 按优先级排序的派发
 - `BM_EventSubscriberCount` —— 活跃订阅者计数
 
+### ws_server_bench.cpp
+- `BM_WsServerListenerCreate` —— Listener 构造 + shutdown 开销
+- `BM_WsServerSessionCreate` —— Session 构造开销（含 socket pair 建立）
+
 ## 运行
 
 ```bash
@@ -54,6 +58,7 @@ make bench                          # 编译全部
 ./bench_logger    --benchmark_min_time=0.2
 ./bench_eventmgr  --benchmark_min_time=0.2
 ./bench_netconn   --benchmark_min_time=0.2
+./bench_ws_server --benchmark_min_time=0.2
 
 # 筛选指定测试
 ./bench_eventmgr --benchmark_filter=BM_EventFire

@@ -14,6 +14,7 @@ foreach(dir ${APP_DIRS})
 endforeach()
 
 find_package(Threads REQUIRED)
+find_package(GTest REQUIRED)
 
 add_executable(gameserver main.cpp)
 target_link_libraries(gameserver app core Threads::Threads dl)
@@ -27,3 +28,12 @@ set_target_properties(gameserver PROPERTIES
 target_include_directories(gameserver PRIVATE
     ${CMAKE_SOURCE_DIR}/module/app/include
 )
+
+add_executable(chat_tests desktop/app/chat/backend/test/chat_test.cpp)
+target_link_libraries(chat_tests chat GTest::GTest GTest::Main)
+target_include_directories(chat_tests PRIVATE desktop/app/chat/backend/include)
+set_target_properties(chat_tests PROPERTIES
+    BUILD_RPATH "${CMAKE_BINARY_DIR}/output/lib"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output/test
+)
+add_dependencies(chat_tests chat)

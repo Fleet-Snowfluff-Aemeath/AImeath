@@ -1,9 +1,9 @@
 3rd
 ref
 build/
-desktop/node_modules
+node_modules/
 desktop/dist
-tmp
+tmp/
 config.json
 SKILL.md
 notebook/

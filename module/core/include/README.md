@@ -128,3 +128,47 @@ conn.wsClose();
 - 连接超时控制（`setConnectTimeout`）
 - 线程安全：所有公有方法可多线程调用
 - 利用 Logger 记录连接日志
+
+---
+
+### wsutil.hpp
+
+**工具函数** —— URL 解析和 JSON 辅助函数。
+
+```cpp
+auto pu = parseUrl("https://example.com:8080/path?key=val");  // 解析 URL
+std::string err = jsonError("something wrong");                 // {"type":"error","msg":"..."}
+std::string ok  = jsonOk();                                     // {"type":"ok"}
+std::string val = jsonParseStr(msg, "key");                     // 从 JSON 提取字符串字段
+int n = jsonParseInt(msg, "count");                             // 从 JSON 提取整数字段
+```
+
+设计要点：
+- URL 解析基于 `boost::url`，支持 HTTP/HTTPS/WS/WSS 协议，自动处理端口和 query string
+- JSON 函数基于 `boost::json`，异常安全（解析失败返回默认值）
+- `jsonParseStr`/`jsonParseInt` 提供字符串和 `boost::json::value` 两种重载
+
+---
+
+### ws_server.hpp
+
+**class Session / class Listener** —— 异步 WebSocket 服务端。
+
+```cpp
+ThreadPool fallback(DEFAULT_FALLBACK_THREADS);
+Logger log(Logger::INFO);
+AppModuleCache cache;
+asio::io_context io;
+
+auto listener = std::make_shared<Listener>(io, log, cache, &fallback, 3001);
+listener->run();
+io.run();
+```
+
+设计要点：
+- `Listener`：async_accept 循环，每个连接创建 `Session`
+- `Session`：HTTP Upgrade → 首消息路由 → 异步/遗留双模 app 处理
+- 写队列串行化：`async_write` 完成后再发下一条，避免帧交错
+- 路由策略：首消息 JSON 中依次查找 `app`/`text`/`game` 字段确定目标 app
+- 异步模式优先：若 app 支持 `app_on_input`/`app_set_output`，走异步回调模式；否则走 `app_process` 遗留模式提交到 fallback_pool
+- 依赖 `app_mod.hpp`（app 模块）进行动态加载和 app 实例管理

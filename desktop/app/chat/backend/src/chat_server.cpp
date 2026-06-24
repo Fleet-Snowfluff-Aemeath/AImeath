@@ -3,6 +3,7 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <deque>
 #include <sstream>
 #include <fstream>
 #include <cstdlib>
@@ -12,6 +13,8 @@
 #include <mutex>
 #include <utility>
 #include <memory>
+#include <chrono>
+#include <ctime>
 
 #include <boost/asio.hpp>
 #include <boost/asio/ssl.hpp>
@@ -29,13 +32,31 @@ using tcp = asio::ip::tcp;
 
 // ---- ChatApp state ----
 
-struct ChatApp
+#define CHAT_LOG(level, msg) \
+    do { \
+        auto now = std::chrono::system_clock::now(); \
+        auto t = std::chrono::system_clock::to_time_t(now); \
+        auto ms = std::chrono::duration_cast<std::chrono::milliseconds>( \
+            now.time_since_epoch()) % 1000; \
+        char _buf[32]; \
+        std::strftime(_buf, sizeof(_buf), "%H:%M:%S", std::localtime(&t)); \
+        std::cerr << "[" << _buf << "." << ms.count() << "] " << level << " " << msg << std::endl; \
+    } while(0)
+
+struct ChatApp;
+static void processNextInQueue(ChatApp* app);
+static void handleUserMessageAsync(ChatApp* app, const std::string& text);
+
+struct ChatApp : std::enable_shared_from_this<ChatApp>
 {
     std::vector<boost::json::object> history;
     std::vector<boost::json::object> pending_outputs; // legacy
+    std::deque<std::string> input_queue;              // pending messages while streaming
     std::mutex mtx;
     std::atomic<bool> cancelled{false};
+    std::atomic<bool> streaming{false};               // true while DeepSeek request in flight
     std::thread stream_thread;                        // legacy background thread
+    int round = 0;                                    // message round counter for logging
 
     // Async output
     app_output_fn output_cb = nullptr;
@@ -50,14 +71,30 @@ struct ChatApp
 
     bool done = false;
 
+    // Self-holder to manage lifetime: app_destroy releases this,
+    // but actual deletion waits until all callbacks release their weak_ptr.
+    std::shared_ptr<ChatApp> self_holder;
+
     void push_output(boost::json::value val)
     {
+        bool is_end = false;
         if (val.is_object()) {
             auto& o = val.as_object();
             auto it = o.find("type");
-            if (it != o.end() && it->value().is_string() &&
-                it->value().as_string() == "stream_end")
-                done = true;
+            if (it != o.end() && it->value().is_string()) {
+                auto t = it->value().as_string();
+                if (t == "stream_start")
+                    CHAT_LOG("[chat-out]", "stream_start (round " << round << ")");
+                else if (t == "stream_end")
+                    is_end = true;
+                else if (t == "delta")
+                    CHAT_LOG("[chat-out]", "delta (round " << round << ")");
+                else if (t == "reasoning")
+                    CHAT_LOG("[chat-out]", "reasoning (round " << round << ")");
+            }
+        }
+        if (is_end) {
+            CHAT_LOG("[chat-out]", "stream_end (round " << round << ")");
         }
         if (output_cb) {
             std::string s = boost::json::serialize(val);
@@ -65,6 +102,11 @@ struct ChatApp
         } else {
             std::lock_guard<std::mutex> lock(mtx);
             pending_outputs.push_back(val.as_object());
+        }
+        if (is_end) {
+            streaming = false;
+            CHAT_LOG("[chat-state]", "idle (round " << round << ")");
+            processNextInQueue(this);
         }
     }
 };
@@ -76,10 +118,12 @@ struct ChatApp::AsyncDeepSeek
 {
     using PushFn = std::function<void(boost::json::object)>;
     using DoneFn = std::function<void(std::string, std::string)>;
+    static constexpr auto REQUEST_TIMEOUT = std::chrono::seconds(120);
 
     AsyncDeepSeek(asio::io_context& ioc)
         : io_(ioc), resolver_(ioc)
         , stream_(std::make_unique<ssl::stream<beast::tcp_stream>>(ioc, chat_ssl()))
+        , timer_(ioc)
     {}
 
     void start(const std::string& host, const std::string& port,
@@ -92,12 +136,22 @@ struct ChatApp::AsyncDeepSeek
         auth_ = auth;
         host_ = host;
         port_ = port;
+
+        auto self = shared_from_this();
+        timer_.expires_after(REQUEST_TIMEOUT);
+        timer_.async_wait([self](beast::error_code ec) {
+            if (ec == asio::error::operation_aborted) return;
+            self->finish_error("request timeout after " +
+                std::to_string(REQUEST_TIMEOUT.count()) + "s");
+        });
+
         do_resolve();
     }
 
     void cancel()
     {
         cancelled_ = true;
+        timer_.cancel();
         resolver_.cancel();
         beast::error_code ec;
         stream_->lowest_layer().cancel(ec);
@@ -110,9 +164,15 @@ private:
         return ctx;
     }
 
+    void stop_timer()
+    {
+        timer_.cancel();
+    }
+
     asio::io_context& io_;
     tcp::resolver resolver_;
     std::unique_ptr<ssl::stream<beast::tcp_stream>> stream_;
+    asio::steady_timer timer_;
     beast::flat_buffer buf_;
     http::response_parser<http::string_body> parser_;
     http::request<http::string_body> req_;
@@ -280,6 +340,7 @@ private:
 
     void finish_success()
     {
+        stop_timer();
         if (cancelled_) return;
         boost::json::object end;
         end["type"] = "stream_end";
@@ -289,6 +350,7 @@ private:
 
     void finish_error(const std::string& msg)
     {
+        stop_timer();
         if (cancelled_) return;
         boost::json::object end;
         end["type"] = "stream_end";
@@ -381,16 +443,6 @@ static boost::json::array drainPollArray(ChatApp* app)
     for (auto& obj : app->pending_outputs)
         arr.push_back(std::move(obj));
     app->pending_outputs.clear();
-    if (!arr.empty()) {
-        auto& last = arr[arr.size() - 1];
-        if (last.is_object()) {
-            auto& obj = last.as_object();
-            auto it = obj.find("type");
-            if (it != obj.end() && it->value().is_string() &&
-                it->value().as_string() == "stream_end")
-                app->done = true;
-        }
-    }
     return arr;
 }
 
@@ -528,6 +580,29 @@ static void callDeepSeekLegacy(
     push_event(std::move(end));
 }
 
+// ---- Process next queued message ----
+
+// Must NOT hold mtx when calling handleUserMessageAsync (non-recursive mutex)
+static void processNextInQueue(ChatApp* app)
+{
+    std::string next;
+    {
+        std::lock_guard<std::mutex> lock(app->mtx);
+        if (app->cancelled) return;
+        if (app->input_queue.empty()) {
+            CHAT_LOG("[chat-q]", "queue empty, idle (round " << app->round << ")");
+            return;
+        }
+        next = std::move(app->input_queue.front());
+        app->input_queue.pop_front();
+    }
+    CHAT_LOG("[chat-q]", "dequeue pending message (round " << app->round
+             << ", " << app->input_queue.size() << " remaining in queue)");
+    app->streaming = true;
+    ++app->round;
+    handleUserMessageAsync(app, next);
+}
+
 // ---- Async path: zero-thread DeepSeek via io_context ----
 
 static void handleUserMessageAsync(ChatApp* app, const std::string& text)
@@ -567,22 +642,22 @@ static void handleUserMessageAsync(ChatApp* app, const std::string& text)
     asio::io_context* io = static_cast<asio::io_context*>(app->io_ctx_ptr);
     if (!io) {
         // Fallback: legacy background thread
-        ChatApp* app_ptr = app;
-        std::thread t([app_ptr, history_copy]() {
-            auto push_event = [app_ptr](boost::json::object obj) {
-                std::lock_guard<std::mutex> lock(app_ptr->mtx);
-                if (app_ptr->cancelled) return;
-                app_ptr->pending_outputs.push_back(std::move(obj));
+        // Shared ownership keeps ChatApp alive until the thread completes
+        auto self = app->shared_from_this();
+        std::thread t([self, history_copy]() {
+            auto push_event = [self](boost::json::object obj) {
+                if (self->cancelled) return;
+                self->push_output(std::move(obj));
             };
             std::string fr, fg;
             callDeepSeekLegacy(history_copy, push_event, fr, fg);
             if (!fr.empty()) {
-                std::lock_guard<std::mutex> lock(app_ptr->mtx);
-                if (app_ptr->cancelled) return;
+                std::lock_guard<std::mutex> lock(self->mtx);
+                if (self->cancelled) return;
                 boost::json::object am;
                 am["role"] = "assistant";
                 am["content"] = std::move(fr);
-                app_ptr->history.push_back(std::move(am));
+                self->history.push_back(std::move(am));
             }
         });
         {
@@ -591,26 +666,31 @@ static void handleUserMessageAsync(ChatApp* app, const std::string& text)
             app->stream_thread = std::move(t);
         }
     } else {
-        // Async HTTP on io_context — capture callback directly (no ChatApp ptr)
-        auto app_cb = app->output_cb;
-        auto app_ud = app->output_udata;
-
-        auto push_event = [app_cb, app_ud](boost::json::object obj) {
-            if (!app_cb) return;
-            std::string s = boost::json::serialize(obj);
-            app_cb(app_ud, s.c_str());
+        // Async HTTP on io_context — route all output through push_output
+        // for consistent logging and end-of-stream queue draining
+        std::weak_ptr<ChatApp> weak_app = app->shared_from_this();
+        auto push_event = [weak_app](boost::json::object obj) {
+            auto self = weak_app.lock();
+            if (!self) return;
+            self->push_output(std::move(obj));
         };
 
-        auto on_done = [app_ptr = app](std::string response, std::string) {
-            std::lock_guard<std::mutex> lock(app_ptr->mtx);
-            if (app_ptr->cancelled) return;
-            if (!response.empty()) {
-                boost::json::object am;
-                am["role"] = "assistant";
-                am["content"] = std::move(response);
-                app_ptr->history.push_back(std::move(am));
+        // weak_ptr breaks potential cycle: ChatApp → AsyncDeepSeek → on_done → ChatApp
+        std::weak_ptr<ChatApp> weak_self = app->shared_from_this();
+        auto on_done = [weak_self](std::string response, std::string) {
+            auto self = weak_self.lock();
+            if (!self) return;
+            if (self->cancelled) return;
+            {
+                std::lock_guard<std::mutex> lock(self->mtx);
+                if (!response.empty()) {
+                    boost::json::object am;
+                    am["role"] = "assistant";
+                    am["content"] = std::move(response);
+                    self->history.push_back(std::move(am));
+                }
+                self->current_stream.reset();
             }
-            app_ptr->current_stream.reset();
         };
 
         auto stream = std::make_shared<ChatApp::AsyncDeepSeek>(*io);
@@ -643,22 +723,21 @@ static boost::json::array handleUserMessageLegacy(ChatApp* app, const std::strin
         history_copy = app->history;
     }
 
-    ChatApp* app_ptr = app;
-    std::thread t([app_ptr, history_copy]() {
-        auto push_event = [app_ptr](boost::json::object obj) {
-            std::lock_guard<std::mutex> lock(app_ptr->mtx);
-            if (app_ptr->cancelled) return;
-            app_ptr->pending_outputs.push_back(std::move(obj));
+    auto self = app->shared_from_this();
+    std::thread t([self, history_copy]() {
+        auto push_event = [self](boost::json::object obj) {
+            if (self->cancelled) return;
+            self->push_output(std::move(obj));
         };
         std::string fr, fg;
         callDeepSeekLegacy(history_copy, push_event, fr, fg);
         if (!fr.empty()) {
-            std::lock_guard<std::mutex> lock(app_ptr->mtx);
-            if (app_ptr->cancelled) return;
+            std::lock_guard<std::mutex> lock(self->mtx);
+            if (self->cancelled) return;
             boost::json::object am;
             am["role"] = "assistant";
             am["content"] = std::move(fr);
-            app_ptr->history.push_back(std::move(am));
+            self->history.push_back(std::move(am));
         }
     });
     {
@@ -684,18 +763,23 @@ extern "C"
 void* app_create(const char* config_json)
 {
     (void)config_json;
-    return new ChatApp();
+    auto ptr = std::make_shared<ChatApp>();
+    ptr->self_holder = ptr;
+    return ptr.get();
 }
 
 void app_destroy(void* p)
 {
     auto* app = static_cast<ChatApp*>(p);
     app->cancelled = true;
+    app->output_cb = nullptr;
+    app->output_udata = nullptr;
     if (app->current_stream)
         app->current_stream->cancel();
     if (app->stream_thread.joinable())
         app->stream_thread.detach();
-    delete app;
+    app->current_stream.reset();
+    app->self_holder.reset();
 }
 
 void app_set_output(void* p, app_output_fn cb, void* userdata)
@@ -730,11 +814,24 @@ void app_on_input(void* p, const char* input_json)
         if (text_it != obj.end() && text_it->value().is_string()) {
             std::string text(text_it->value().as_string());
             if (text[0] == '/') {
+                CHAT_LOG("[chat-in]", "command: " << text);
                 auto arr = handleCommand(text);
                 for (auto& item : arr)
                     app->push_output(std::move(item));
             } else {
-                handleUserMessageAsync(app, text);
+                CHAT_LOG("[chat-in]", "text: \"" << text.substr(0, 20)
+                         << (text.size() > 20 ? "..." : "") << "\""
+                         << " (streaming=" << app->streaming << ")");
+                if (app->streaming) {
+                    std::lock_guard<std::mutex> lock(app->mtx);
+                    app->input_queue.push_back(text);
+                    CHAT_LOG("[chat-q]", "queued message (queue size="
+                             << app->input_queue.size() << ")");
+                } else {
+                    app->streaming = true;
+                    ++app->round;
+                    handleUserMessageAsync(app, text);
+                }
             }
         }
     } catch (...) {}
@@ -783,6 +880,32 @@ void app_free_string(char* str)
 int app_is_done(void* p)
 {
     return static_cast<ChatApp*>(p)->done ? 1 : 0;
+}
+
+// ---- Test helpers (for unit test queue-drain verification) ----
+
+int app_queue_size(void* p)
+{
+    auto* app = static_cast<ChatApp*>(p);
+    std::lock_guard<std::mutex> lock(app->mtx);
+    return static_cast<int>(app->input_queue.size());
+}
+
+int app_streaming(void* p)
+{
+    return static_cast<ChatApp*>(p)->streaming ? 1 : 0;
+}
+
+void app_test_set_streaming(void* p, int val)
+{
+    static_cast<ChatApp*>(p)->streaming = (val != 0);
+}
+
+void app_test_drain_queue(void* p)
+{
+    auto* app = static_cast<ChatApp*>(p);
+    app->streaming = false;
+    processNextInQueue(app);
 }
 
 } // extern "C"

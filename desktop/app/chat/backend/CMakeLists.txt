@@ -17,15 +17,19 @@ add_library(chat SHARED
     src/chat_server.cpp
 )
 target_include_directories(chat PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
-target_include_directories(chat PRIVATE
-    ${CMAKE_SOURCE_DIR}/module/app/include
-    ${CMAKE_SOURCE_DIR}/module/core/include
-)
 target_link_libraries(chat PRIVATE Boost::json)
+
+if(TARGET app)
+    target_include_directories(chat PRIVATE ${CMAKE_SOURCE_DIR}/module/app/include)
+else()
+    target_include_directories(chat PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../../../module/app/include)
+endif()
+
 if(TARGET core)
     target_link_libraries(chat PRIVATE core)
-else()
     target_include_directories(chat PRIVATE ${CMAKE_SOURCE_DIR}/module/core/include)
+else()
+    target_include_directories(chat PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../../../module/core/include)
 endif()
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)

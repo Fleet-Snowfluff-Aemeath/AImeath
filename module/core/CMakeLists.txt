@@ -9,10 +9,14 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(BOOST_ROOT "/usr/local/boost_1_91" CACHE PATH "Boost installation root directory")
 find_package(OpenSSL REQUIRED)
 find_package(Threads REQUIRED)
-find_package(Boost REQUIRED COMPONENTS url json)
+find_package(Boost REQUIRED COMPONENTS url json filesystem)
 
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output/lib)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output/lib)
+
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../app ${CMAKE_BINARY_DIR}/app)
+endif()
 
 add_library(core SHARED
     src/threadmgr.cpp
@@ -21,9 +25,10 @@ add_library(core SHARED
     src/eventmgr.cpp
     src/netconn.cpp
     src/wsutil.cpp
+    src/ws_server.cpp
 )
 target_include_directories(core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
-target_link_libraries(core PUBLIC OpenSSL::SSL OpenSSL::Crypto Threads::Threads Boost::url Boost::json)
+target_link_libraries(core PUBLIC OpenSSL::SSL OpenSSL::Crypto Threads::Threads Boost::url Boost::json app)
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 find_package(GTest REQUIRED)
@@ -33,6 +38,7 @@ add_executable(tests
     test/logger_test.cpp
     test/eventmgr_test.cpp
     test/netconn_test.cpp
+    test/ws_server_test.cpp
 )
 set_target_properties(tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output/test)
 target_link_libraries(tests core GTest::GTest GTest::Main)
@@ -65,12 +71,18 @@ set_target_properties(bench_netconn PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_
 target_link_libraries(bench_netconn core benchmark::benchmark)
 target_include_directories(bench_netconn PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
+add_executable(bench_ws_server benchmark/ws_server_bench.cpp)
+set_target_properties(bench_ws_server PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output/bench)
+target_link_libraries(bench_ws_server core benchmark::benchmark)
+target_include_directories(bench_ws_server PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+
 add_custom_target(bench
     COMMAND $<TARGET_FILE:bench_threadpool>
     COMMAND $<TARGET_FILE:bench_timer>
     COMMAND $<TARGET_FILE:bench_logger>
     COMMAND $<TARGET_FILE:bench_eventmgr>
     COMMAND $<TARGET_FILE:bench_netconn>
-    DEPENDS bench_threadpool bench_timer bench_logger bench_eventmgr bench_netconn
+    COMMAND $<TARGET_FILE:bench_ws_server>
+    DEPENDS bench_threadpool bench_timer bench_logger bench_eventmgr bench_netconn bench_ws_server
 )
 endif()
