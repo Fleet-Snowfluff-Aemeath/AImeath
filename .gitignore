@@ -3,8 +3,7 @@ ref
 build/
 desktop/node_modules
 desktop/dist
-res
+tmp
 config.json
 SKILL.md
 notebook/
-tmp/
