@@ -213,7 +213,11 @@ private:
                 }
                 if (ec) { self->finish_error(ec.message()); return; }
                 self->drain_remaining();
-                if (!self->parser_.is_done()) self->do_read_body();
+                if (self->parser_.is_done()) {
+                    self->finish_success();
+                } else {
+                    self->do_read_body();
+                }
             });
     }
 
