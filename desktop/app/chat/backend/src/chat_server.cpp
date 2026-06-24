@@ -115,6 +115,7 @@ private:
     std::unique_ptr<ssl::stream<beast::tcp_stream>> stream_;
     beast::flat_buffer buf_;
     http::response_parser<http::string_body> parser_;
+    http::request<http::string_body> req_;
 
     std::atomic<bool> cancelled_{false};
     size_t prev_body_size_ = 0;
@@ -158,16 +159,19 @@ private:
 
     void do_write_request()
     {
-        http::request<http::string_body> req(http::verb::post, "/chat/completions", 11);
-        req.set(http::field::host, host_);
-        req.set(http::field::content_type, "application/json");
-        req.set(http::field::connection, "close");
-        if (!auth_.empty()) req.set(http::field::authorization, auth_);
-        req.body() = body_;
-        req.prepare_payload();
+        req_ = {};
+        req_.method(http::verb::post);
+        req_.target("/chat/completions");
+        req_.version(11);
+        req_.set(http::field::host, host_);
+        req_.set(http::field::content_type, "application/json");
+        req_.set(http::field::connection, "close");
+        if (!auth_.empty()) req_.set(http::field::authorization, auth_);
+        req_.body() = body_;
+        req_.prepare_payload();
 
         auto self = shared_from_this();
-        http::async_write(*stream_, req,
+        http::async_write(*stream_, req_,
             [self](beast::error_code ec, std::size_t) {
                 if (ec) { self->finish_error(ec.message()); return; }
                 self->do_read_header();
