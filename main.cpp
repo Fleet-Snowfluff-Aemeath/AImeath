@@ -59,10 +59,12 @@ class Session : public std::enable_shared_from_this<Session>
 {
 public:
     Session(tcp::socket socket, Logger& logger,
-            AppModuleCache& cache, ThreadPool* fallback_pool)
+            AppModuleCache& cache, ThreadPool* fallback_pool,
+            asio::io_context* io_ctx)
         : logger_(logger)
         , cache_(cache)
         , fallback_pool_(fallback_pool)
+        , io_ctx_(io_ctx)
     {
         stream_.emplace(std::move(socket));
     }
@@ -96,6 +98,7 @@ private:
     AppModule      mod_;
     AppPtr          app_;
     ThreadPool*     fallback_pool_;
+    asio::io_context* io_ctx_;
     std::string     first_msg_;
 
     // ---- 写队列（串行化 async_write） ----
@@ -187,7 +190,7 @@ private:
             // 异步路径
             mod_.app_set_output(app_.get(), &Session::app_output_cb, this);
             if (mod_.app_set_io_context)
-                mod_.app_set_io_context(app_.get(), &ws_->get_executor().context());
+                mod_.app_set_io_context(app_.get(), io_ctx_);
             mod_.app_on_input(app_.get(), first_msg_.c_str());
             do_read();
         } else {
@@ -313,7 +316,8 @@ class Listener : public std::enable_shared_from_this<Listener>
 public:
     Listener(asio::io_context& io, Logger& logger,
              AppModuleCache& cache, ThreadPool* fallback_pool)
-        : acceptor_(io, tcp::endpoint(tcp::v4(), PORT))
+        : io_(io)
+        , acceptor_(io, tcp::endpoint(tcp::v4(), PORT))
         , logger_(logger)
         , cache_(cache)
         , fallback_pool_(fallback_pool)
@@ -339,7 +343,8 @@ private:
                 if (!ec) {
                     auto session = std::make_shared<Session>(
                         std::move(socket), self->logger_,
-                        self->cache_, self->fallback_pool_);
+                        self->cache_, self->fallback_pool_,
+                        &self->io_);
                     session->start();
                 }
                 if (ec != asio::error::operation_aborted)
@@ -347,6 +352,7 @@ private:
             });
     }
 
+    asio::io_context& io_;
     tcp::acceptor    acceptor_;
     Logger&          logger_;
     AppModuleCache&  cache_;
