@@ -28,7 +28,6 @@ struct TermSession
     app_output_fn output_cb = nullptr;
     void* output_udata = nullptr;
     std::array<char, 4096> read_buf{};
-    std::string pending_output;   // accumulated for flush
 
     // ---- Send one output message via callback ----
     void push_output(const std::string& text)
@@ -58,19 +57,9 @@ struct TermSession
             boost::asio::buffer(read_buf),
             [self](boost::system::error_code ec, std::size_t n) {
                 if (ec || n == 0) return;
-                std::string piece(self->read_buf.data(), n);
-                self->pending_output += piece;
-                self->push_output(std::move(piece));
+                self->push_output(std::string(self->read_buf.data(), n));
                 self->start_async_read();
             });
-    }
-
-    // ---- Flush accumulated output (for stdout polls) ----
-    std::string flushOutput()
-    {
-        std::string out;
-        std::swap(out, pending_output);
-        return out;
     }
 
     // ---- Synchronous helpers (shared by sync + async paths) ----

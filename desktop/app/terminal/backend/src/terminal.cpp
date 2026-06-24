@@ -108,10 +108,7 @@ void app_on_input(void* p, const char* input_json)
         }
         else if (action == "stdout")
         {
-            // Async reads already push in real-time.
-            // Flush any remaining buffer for the poll.
-            std::string out = ses->flushOutput();
-            ses->push_output(out);
+            // 异步读取实时推送，无需轮询
         }
         else if (action == "resize")
         {
