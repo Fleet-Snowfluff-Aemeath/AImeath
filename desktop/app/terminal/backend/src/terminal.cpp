@@ -10,6 +10,8 @@
 
 #include <boost/json.hpp>
 
+#include "pty_session.hpp"
+
 namespace json = boost::json;
 
 static char* makeReply(const json::array& arr)
@@ -20,9 +22,44 @@ static char* makeReply(const json::array& arr)
     return buf;
 }
 
-// ============================================================
-//  C ABI
-// ============================================================
+// Terminal 专用的输出包装: 将纯文本格式化为 {"type":"output","text":"..."}
+static void terminalOutputWrap(void* udata, const char* text)
+{
+    auto* ses = static_cast<PtySession*>(udata);
+    json::object msg;
+    msg["type"] = "output";
+    msg["text"] = text;
+    std::string s = json::serialize(msg);
+    // 通过 PtySession 的内部 callback 发送 — 需要使用 setOutput 注册的原始回调
+    // 由于 pushOutput 现在传递纯文本，terminal 层需要通过 app_set_output 直接设置回调
+    // 这里通过 PtySession 的 setOutput 设置一个中间层来格式化
+}
+
+// 实际方案: terminal 持有自己的 output_cb，在 PtySession 回调中格式化后发送
+struct TerminalState
+{
+    std::unique_ptr<PtySession> session;
+    app_output_fn output_cb = nullptr;
+    void* output_udata = nullptr;
+
+    void pushOutput(const std::string& text)
+    {
+        if (!output_cb || text.empty()) return;
+        json::object msg;
+        msg["type"] = "output";
+        msg["text"] = text;
+        output_cb(output_udata, json::serialize(msg).c_str());
+    }
+};
+
+// 全局 io_context（TermSession 原有模式）
+static boost::asio::io_context& terminalIo()
+{
+    static boost::asio::io_context io;
+    static auto work = boost::asio::make_work_guard(io);
+    static std::thread t([] { io.run(); });
+    return io;
+}
 
 extern "C"
 {
@@ -30,15 +67,16 @@ extern "C"
 void* app_create(const char* config_json)
 {
     (void)config_json;
-    auto* ses = new TermSession();
-    return ses;
+    auto* state = new TerminalState();
+    state->session = std::make_unique<PtySession>(terminalIo());
+    return state;
 }
 
 void app_destroy(void* p)
 {
-    auto* ses = static_cast<TermSession*>(p);
-    ses->close();
-    delete ses;
+    auto* state = static_cast<TerminalState*>(p);
+    state->session->close();
+    delete state;
 }
 
 void app_free_string(char* s)
@@ -48,63 +86,40 @@ void app_free_string(char* s)
 
 int app_is_done(void* p)
 {
-    auto* ses = static_cast<TermSession*>(p);
-    return ses->isAlive() ? 0 : 1;
+    auto* state = static_cast<TerminalState*>(p);
+    return state->session->isAlive() ? 0 : 1;
 }
-
-// ---- 异步 API ----
 
 void app_on_input(void* p, const char* input_json)
 {
-    auto* ses = static_cast<TermSession*>(p);
+    auto* state = static_cast<TerminalState*>(p);
 
-    auto sendErr = [ses](const std::string& msg) {
-        ses->push_output("ERROR: " + msg);
+    auto sendErr = [state](const std::string& msg) {
+        state->pushOutput("ERROR: " + msg);
     };
 
     try
     {
         auto val = json::parse(input_json);
-        if (!val.is_object()) {
-            sendErr("not an object");
-            return;
-        }
+        if (!val.is_object()) { sendErr("not an object"); return; }
         auto& obj = val.as_object();
 
         auto it = obj.find("action");
-        if (it == obj.end() || !it->value().is_string()) {
-            sendErr("missing action");
-            return;
-        }
+        if (it == obj.end() || !it->value().is_string()) { sendErr("missing action"); return; }
         std::string action(it->value().as_string());
 
         if (action == "exec")
         {
             auto cmdIt = obj.find("cmd");
-            if (cmdIt == obj.end() || !cmdIt->value().is_string()) {
-                sendErr("missing cmd");
-                return;
-            }
+            if (cmdIt == obj.end() || !cmdIt->value().is_string()) { sendErr("missing cmd"); return; }
             std::string cmd(cmdIt->value().as_string());
-
-            if (ses->child_pid > 0) {
-                sendErr("terminal already running");
-                return;
-            }
-
-            ses->start_with_async(cmd);
-            // Prompt 由异步 PTY 读取自动推送，无需手动等待
+            state->session->startAsync(cmd);
         }
         else if (action == "stdin")
         {
             auto dataIt = obj.find("data");
-            if (dataIt == obj.end() || !dataIt->value().is_string()) {
-                sendErr("missing data");
-                return;
-            }
-            std::string data(dataIt->value().as_string());
-            ses->writeInput(data);
-            // Async reads will push output, no need to block here
+            if (dataIt == obj.end() || !dataIt->value().is_string()) { sendErr("missing data"); return; }
+            state->session->write(std::string(dataIt->value().as_string()));
         }
         else if (action == "stdout")
         {
@@ -119,7 +134,7 @@ void app_on_input(void* p, const char* input_json)
             auto cit = obj.find("cols");
             if (cit != obj.end() && cit->value().is_int64())
                 cols = (int)cit->value().as_int64();
-            ses->setSize(rows, cols);
+            state->session->resize(rows, cols);
         }
         else
         {
@@ -134,16 +149,22 @@ void app_on_input(void* p, const char* input_json)
 
 void app_set_output(void* p, app_output_fn cb, void* userdata)
 {
-    auto* ses = static_cast<TermSession*>(p);
-    ses->output_cb = cb;
-    ses->output_udata = userdata;
-}
+    auto* state = static_cast<TerminalState*>(p);
+    state->output_cb = cb;
+    state->output_udata = userdata;
 
-// ---- 同步 API（遗留兼容） ----
+    // 注册 PtySession 的回调: 纯文本 → terminalOutputWrap → JSON → output_cb
+    state->session->setOutput(
+        [](void* udata, const char* text) {
+            auto* s = static_cast<TerminalState*>(udata);
+            s->pushOutput(text);
+        },
+        state);
+}
 
 char* app_process(void* p, const char* input_json)
 {
-    auto* ses = static_cast<TermSession*>(p);
+    auto* state = static_cast<TerminalState*>(p);
 
     try
     {
@@ -152,7 +173,6 @@ char* app_process(void* p, const char* input_json)
             return makeReply(json::array{json::object{{"type","error"},{"msg","not an object"}}});
 
         auto& obj = val.as_object();
-
         auto it = obj.find("action");
         if (it == obj.end() || !it->value().is_string())
             return makeReply(json::array{json::object{{"type","error"},{"msg","missing action"}}});
@@ -166,16 +186,11 @@ char* app_process(void* p, const char* input_json)
                 return makeReply(json::array{json::object{{"type","error"},{"msg","missing cmd"}}});
 
             std::string cmd(cmdIt->value().as_string());
-
-            if (!ses->start(cmd))
+            if (!state->session->start(cmd))
                 return makeReply(json::array{json::object{{"type","error"},{"msg","forkpty failed"}}});
 
             usleep(150000);
-            std::string output = ses->readOutput();
-            return makeReply(json::array{json::object{
-                {"type", "output"},
-                {"text", output}
-            }});
+            return makeReply(json::array{json::object{{"type","output"},{"text",""}}});
         }
         else if (action == "stdin")
         {
@@ -183,21 +198,12 @@ char* app_process(void* p, const char* input_json)
             if (dataIt == obj.end() || !dataIt->value().is_string())
                 return makeReply(json::array{json::object{{"type","error"},{"msg","missing data"}}});
 
-            std::string data(dataIt->value().as_string());
-            ses->writeInput(data);
-            std::string output = ses->readOutput();
-            return makeReply(json::array{json::object{
-                {"type", "output"},
-                {"text", output}
-            }});
+            state->session->write(std::string(dataIt->value().as_string()));
+            return makeReply(json::array{json::object{{"type","output"},{"text",""}}});
         }
         else if (action == "stdout")
         {
-            std::string output = ses->readPending();
-            return makeReply(json::array{json::object{
-                {"type", "output"},
-                {"text", output}
-            }});
+            return makeReply(json::array{json::object{{"type","output"},{"text",""}}});
         }
         else if (action == "resize")
         {
@@ -208,7 +214,7 @@ char* app_process(void* p, const char* input_json)
             auto cit = obj.find("cols");
             if (cit != obj.end() && cit->value().is_int64())
                 cols = (int)cit->value().as_int64();
-            ses->setSize(rows, cols);
+            state->session->resize(rows, cols);
             return makeReply(json::array{});
         }
 

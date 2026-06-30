@@ -44,8 +44,8 @@ frontend/
 **必须在 WSL 中同时运行 C++ WebSocket 游戏服务器（端口 3001）：**
 
 ```bash
-# 在 WSL 中，先启动游戏服务器
-cd /home/huanli/lab
+# 在 WSL 中，先启动游戏服务器（在项目根目录下执行）
+cd /path/to/project/root
 LD_LIBRARY_PATH=build/output/lib ./build/output/gameserver &
 ```
 

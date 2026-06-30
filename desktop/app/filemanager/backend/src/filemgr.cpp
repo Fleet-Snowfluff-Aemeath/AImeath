@@ -1,5 +1,5 @@
 // filemgr.cpp — 文件管理器 C ABI 后端
-// 提供目录列表功能（list），文件内容由前端直接 HTTP fetch
+// 提供目录列表/文件读写等操作，委托给 module/core 的 VirtualFileSystem
 
 #include "app_api.hpp"
 #include "filemgr.hpp"
@@ -7,129 +7,102 @@
 #include <cstdlib>
 #include <cstring>
 #include <string>
-#include <filesystem>
-#include <fstream>
-#include <sstream>
-#include <ctime>
-#include <sys/stat.h>
-#include <vector>
-#include <algorithm>
+#include <memory>
 
 #include <boost/json.hpp>
 
-namespace fs = std::filesystem;
+#include "vfs.hpp"
+#include "config.hpp"
+
 namespace json = boost::json;
 
-static const fs::path kRoot = "desktop/public/home";
-
-// 安全解析路径：防止目录穿越
-static std::string resolvePath(const std::string& path)
+static VirtualFileSystem& vfs()
 {
-    std::string rel;
-    if (path == "/home" || path == "/")
-        rel = "";
-    else if (path.rfind("/home/", 0) == 0)
-        rel = path.substr(5);
-    else
-        rel = path;
-
-    if (!rel.empty() && rel[0] == '/')
-        rel = rel.substr(1);
-
-    std::error_code ec;
-    fs::path full = fs::weakly_canonical(kRoot / rel, ec);
-    if (ec) return {};
-
-    fs::path root = fs::weakly_canonical(kRoot, ec);
-    if (ec) return {};
-
-    std::string s_full = full.string();
-    std::string s_root = root.string();
-
-    if (s_full.size() < s_root.size() ||
-        s_full.compare(0, s_root.size(), s_root) != 0 ||
-        (s_full.size() > s_root.size() && s_full[s_root.size()] != '/'))
-        return {};
-
-    return s_full;
+    static VirtualFileSystem instance(Config::instance().fileRoot());
+    return instance;
 }
 
-// 获取文件浏览器 URL（从根相对路径计算）
-static std::string fileUrl(const fs::path& full)
+static json::array listAction(const std::string& path)
 {
-    std::error_code ec;
-    fs::path root = fs::weakly_canonical(kRoot, ec);
-    if (ec) return {};
-    auto r = fs::relative(full, root, ec);
-    if (ec) return {};
-    return "/home/" + r.generic_string();
-}
-
-// 获取文件修改时间
-static std::string modifiedTime(const fs::path& p)
-{
-    struct stat st;
-    if (::stat(p.c_str(), &st)) return {};
-    char buf[64];
-    if (std::strftime(buf, sizeof buf, "%Y-%m-%dT%H:%M:%S", std::localtime(&st.st_mtime)))
-        return buf;
-    return {};
-}
-
-// 列出目录
-static json::array listDir(const std::string& path)
-{
-    std::string full = resolvePath(path);
-    if (full.empty())
+    auto entries = vfs().listDir(path);
+    if (entries.empty())
     {
         json::array a;
-        a.push_back(json::object{{"type","error"},{"msg","invalid path"}});
+        a.push_back(json::object{{"type","error"},{"msg","invalid path or empty directory"}});
         return a;
     }
 
-    json::array entries;
-    std::error_code ec;
-    for (auto& e : fs::directory_iterator(full, ec))
+    json::array items;
+    for (auto& e : entries)
     {
         json::object obj;
-        obj["name"] = e.path().filename().string();
-
-        if (e.is_directory())
-        {
-            obj["kind"] = "dir";
-            obj["size"] = 0;
-        }
-        else
-        {
-            obj["kind"] = "file";
-            auto sz = e.file_size(ec);
-            obj["size"] = ec ? 0 : static_cast<std::int64_t>(sz);
-        }
-
-        obj["modified"] = modifiedTime(e.path());
-        obj["url"] = fileUrl(e.path());
-        entries.push_back(std::move(obj));
+        obj["name"]     = std::move(e.name);
+        obj["kind"]     = std::move(e.kind);
+        obj["size"]     = static_cast<std::int64_t>(e.size);
+        obj["modified"] = std::move(e.modified);
+        obj["url"]      = std::move(e.url);
+        items.push_back(std::move(obj));
     }
-
-    // 排序：目录在前，按名称排序
-    std::sort(entries.begin(), entries.end(),
-        [](const json::value& a, const json::value& b)
-        {
-            auto& oa = a.as_object();
-            auto& ob = b.as_object();
-            bool ad = oa.at("kind").as_string() == "dir";
-            bool bd = ob.at("kind").as_string() == "dir";
-            if (ad != bd) return ad;
-            return oa.at("name").as_string() < ob.at("name").as_string();
-        });
 
     json::array result;
     result.push_back(json::object{
         {"type", "listing"},
         {"path", path},
-        {"entries", std::move(entries)}
+        {"entries", std::move(items)}
     });
     return result;
+}
+
+static json::array readAction(const std::string& path)
+{
+    std::string content = vfs().readFile(path);
+    if (content.empty())
+    {
+        json::array a;
+        a.push_back(json::object{{"type","error"},{"msg","cannot read file: " + path}});
+        return a;
+    }
+
+    json::array result;
+    result.push_back(json::object{
+        {"type", "file"},
+        {"path", path},
+        {"content", std::move(content)}
+    });
+    return result;
+}
+
+static json::array mkdirAction(const std::string& path)
+{
+    bool ok = vfs().mkdir(path);
+    json::array a;
+    a.push_back(json::object{
+        {"type", ok ? "ok" : "error"},
+        {"msg", ok ? "created" : "cannot create directory"}
+    });
+    return a;
+}
+
+static json::array writeAction(const std::string& path, const std::string& content)
+{
+    vfs().writeFile(path, content);
+    json::array a;
+    a.push_back(json::object{
+        {"type", "ok"},
+        {"msg", "written"}
+    });
+    return a;
+}
+
+static json::array removeAction(const std::string& path)
+{
+    bool ok = vfs().remove(path);
+    json::array a;
+    a.push_back(json::object{
+        {"type", ok ? "ok" : "error"},
+        {"msg", ok ? "removed" : "cannot remove"}
+    });
+    return a;
 }
 
 extern "C"
@@ -168,7 +141,24 @@ char* app_process(void*, const char* input_json)
                            ? std::string(it->value().as_string()) : "/";
 
         if (action == "list")
-            return makeReply(listDir(path));
+            return makeReply(listAction(path));
+
+        if (action == "read")
+            return makeReply(readAction(path));
+
+        if (action == "mkdir")
+            return makeReply(mkdirAction(path));
+
+        if (action == "write")
+        {
+            auto cit = obj.find("content");
+            std::string content = (cit != obj.end() && cit->value().is_string())
+                                  ? std::string(cit->value().as_string()) : "";
+            return makeReply(writeAction(path, content));
+        }
+
+        if (action == "remove")
+            return makeReply(removeAction(path));
 
         return makeReply(json::array{json::object{{"type","error"},{"msg","unknown action: "+action}}});
     }

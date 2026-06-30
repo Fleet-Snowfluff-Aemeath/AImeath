@@ -1,5 +1,7 @@
 #!/bin/bash
-cd /home/huanli/lab
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$PROJECT_ROOT"
 pkill -9 -f gameserver 2>/dev/null
 sleep 1
 ./build/output/gameserver > /tmp/srv.log 2>&1 &

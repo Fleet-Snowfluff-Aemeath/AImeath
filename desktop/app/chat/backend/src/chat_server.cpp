@@ -3,9 +3,7 @@
 #include <iostream>
 #include <string>
 #include <vector>
-#include <deque>
-#include <sstream>
-#include <fstream>
+#include "message_queue.hpp"
 #include <cstdlib>
 #include <cstring>
 #include <thread>
@@ -20,8 +18,8 @@
 #include <boost/json.hpp>
 
 #include "llm_client.hpp"
-
-#include "netconn.hpp"
+#include "llm_utils.hpp"
+#include "config.hpp"
 
 namespace asio  = boost::asio;
 
@@ -46,7 +44,7 @@ struct ChatApp : std::enable_shared_from_this<ChatApp>
 {
     std::vector<boost::json::object> history;
     std::vector<boost::json::object> pending_outputs; // legacy
-    std::deque<std::string> input_queue;              // pending messages while streaming
+    MessageQueue<std::string> input_queue;            // pending messages while streaming
     std::mutex mtx;
     std::atomic<bool> cancelled{false};
     std::atomic<bool> streaming{false};               // true while DeepSeek request in flight
@@ -117,20 +115,7 @@ struct ChatApp : std::enable_shared_from_this<ChatApp>
 
 
 // ---- API key ----
-
-static std::string loadDeepSeekApiKey()
-{
-    std::ifstream f("config.json");
-    if (!f.is_open()) return "";
-    std::string content((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
-    try {
-        auto val = boost::json::parse(content);
-        auto& obj = val.as_object();
-        if (obj.contains("deepseek_api_key"))
-            return obj["deepseek_api_key"].as_string().c_str();
-    } catch (...) {}
-    return "";
-}
+// L1: replaced duplicated ifstream+parse with Config::instance() singleton
 
 // ---- Command handling ----
 
@@ -202,155 +187,15 @@ static boost::json::array drainPollArray(ChatApp* app)
     return arr;
 }
 
-// ---- Legacy synchronous DeepSeek (for app_process fallback) ----
-
-using LegacyPush = std::function<void(boost::json::object)>;
-
-static void callDeepSeekLegacy(
-    const std::vector<boost::json::object>& history,
-    LegacyPush push_event,
-    std::string& out_full_response,
-    std::string& out_full_reasoning)
-{
-    out_full_response.clear();
-    out_full_reasoning.clear();
-
-    boost::json::array msgs;
-    for (const auto& m : history) msgs.push_back(m);
-
-    boost::json::object body;
-    body["model"] = "deepseek-v4-flash";
-    body["messages"] = msgs;
-    body["stream"] = true;
-    body["thinking"] = {{"type", "enabled"}, {"budget_tokens", 4096}};
-
-    std::string apiKey = loadDeepSeekApiKey();
-    if (apiKey.empty()) {
-        boost::json::object end;
-        end["type"] = "stream_end";
-        end["msg"]  = "missing deepseek_api_key in config.json";
-        push_event(std::move(end));
-        return;
-    }
-
-    std::string leftover;
-
-    auto on_chunk = [&](const std::string& chunk) {
-        leftover += chunk;
-        size_t pos;
-        while ((pos = leftover.find("\n\n")) != std::string::npos) {
-            std::string event = leftover.substr(0, pos);
-            leftover.erase(0, pos + 2);
-            std::istringstream ss(event);
-            std::string line;
-            while (std::getline(ss, line)) {
-                if (line.rfind("data: ", 0) != 0) continue;
-                std::string data = line.substr(6);
-                if (data == "[DONE]") continue;
-                try {
-                    auto val = boost::json::parse(data);
-                    auto& choices = val.as_object().at("choices").as_array();
-                    if (choices.empty()) continue;
-                    auto& delta = choices[0].as_object().at("delta").as_object();
-                    if (delta.contains("reasoning_content") && delta.at("reasoning_content").is_string()) {
-                        std::string r = delta.at("reasoning_content").as_string().c_str();
-                        if (!r.empty()) {
-                            out_full_reasoning += r;
-                            boost::json::object o;
-                            o["type"] = "reasoning";
-                            o["text"] = std::move(r);
-                            push_event(std::move(o));
-                        }
-                    }
-                    if (delta.contains("content") && delta.at("content").is_string()) {
-                        std::string c = delta.at("content").as_string().c_str();
-                        if (!c.empty()) {
-                            out_full_response += c;
-                            boost::json::object o;
-                            o["type"] = "delta";
-                            o["text"] = std::move(c);
-                            push_event(std::move(o));
-                        }
-                    }
-                } catch (...) {}
-            }
-        }
-    };
-
-    try {
-        httpsPostStream("api.deepseek.com", "443", "/chat/completions",
-            boost::json::serialize(body), "application/json",
-            "Bearer " + apiKey, on_chunk);
-        size_t pos;
-        while ((pos = leftover.find("\n\n")) != std::string::npos) {
-            std::string event = leftover.substr(0, pos);
-            leftover.erase(0, pos + 2);
-            std::istringstream ss(event);
-            std::string line;
-            while (std::getline(ss, line)) {
-                if (line.rfind("data: ", 0) != 0) continue;
-                std::string data = line.substr(6);
-                if (data == "[DONE]") continue;
-                try {
-                    auto val = boost::json::parse(data);
-                    auto& choices = val.as_object().at("choices").as_array();
-                    if (choices.empty()) continue;
-                    auto& delta = choices[0].as_object().at("delta").as_object();
-                    if (delta.contains("reasoning_content") && delta.at("reasoning_content").is_string()) {
-                        std::string r = delta.at("reasoning_content").as_string().c_str();
-                        if (!r.empty()) {
-                            out_full_reasoning += r;
-                            boost::json::object o;
-                            o["type"] = "reasoning";
-                            o["text"] = std::move(r);
-                            push_event(std::move(o));
-                        }
-                    }
-                    if (delta.contains("content") && delta.at("content").is_string()) {
-                        std::string c = delta.at("content").as_string().c_str();
-                        if (!c.empty()) {
-                            out_full_response += c;
-                            boost::json::object o;
-                            o["type"] = "delta";
-                            o["text"] = std::move(c);
-                            push_event(std::move(o));
-                        }
-                    }
-                } catch (...) {}
-            }
-        }
-    } catch (const std::exception& e) {
-        std::string what = e.what();
-        if (what.find("eof") == std::string::npos &&
-            what.find("end of stream") == std::string::npos) {
-            boost::json::object end_val;
-            end_val["type"] = "stream_end";
-            end_val["msg"] = std::move(what);
-            push_event(std::move(end_val));
-            return;
-        }
-    }
-
-    boost::json::object end;
-    end["type"] = "stream_end";
-    push_event(std::move(end));
-}
-
 // ---- Process next queued message ----
 
-// Must NOT hold mtx when calling handleUserMessageAsync (non-recursive mutex)
 static void processNextInQueue(ChatApp* app)
 {
+    if (app->cancelled) return;
     std::string next;
-    {
-        std::lock_guard<std::mutex> lock(app->mtx);
-        if (app->cancelled) return;
-        if (app->input_queue.empty()) {
-            CHAT_LOG("[chat-q]", "queue empty, idle (round " << app->round << ")");
-            return;
-        }
-        next = std::move(app->input_queue.front());
-        app->input_queue.pop_front();
+    if (!app->input_queue.try_pop(next)) {
+        CHAT_LOG("[chat-q]", "queue empty, idle (round " << app->round << ")");
+        return;
     }
     CHAT_LOG("[chat-q]", "dequeue pending message (round " << app->round
              << ", " << app->input_queue.size() << " remaining in queue)");
@@ -380,13 +225,9 @@ static void handleUserMessageAsync(ChatApp* app, const std::string& text)
     boost::json::array msgs;
     for (const auto& m : history_copy) msgs.push_back(m);
 
-    boost::json::object body;
-    body["model"] = "deepseek-v4-flash";
-    body["messages"] = msgs;
-    body["stream"] = true;
-    body["thinking"] = {{"type", "enabled"}, {"budget_tokens", 4096}};
+    std::string body = llm::build_chat_body(msgs);
 
-    std::string apiKey = loadDeepSeekApiKey();
+    std::string apiKey = Config::instance().deepSeekApiKey();
     if (apiKey.empty()) {
         boost::json::object end;
         end["type"] = "stream_end";
@@ -397,22 +238,36 @@ static void handleUserMessageAsync(ChatApp* app, const std::string& text)
 
     asio::io_context* io = static_cast<asio::io_context*>(app->io_ctx_ptr);
     if (!io) {
-        // Fallback: legacy background thread
-        // Shared ownership keeps ChatApp alive until the thread completes
+        // Fallback: LlmClient on a local io_context in a background thread
         auto self = app->shared_from_this();
-        std::thread t([self, history_copy]() {
-            auto push_event = [self](boost::json::object obj) {
-                if (self->cancelled) return;
-                self->push_output(std::move(obj));
-            };
-            std::string fr, fg;
-            callDeepSeekLegacy(history_copy, push_event, fr, fg);
-            if (!fr.empty()) {
+        std::thread t([self, body = std::move(body), apiKey]() {
+            asio::io_context io;
+            auto client = std::make_shared<LlmClient>(io);
+            std::string full_response;
+
+            client->start("api.deepseek.com", "443", body, "Bearer " + apiKey,
+                [&](LlmEvent ev) {
+                    if (self->cancelled) { client->cancel(); return; }
+                    boost::json::object obj;
+                    obj["type"] = ev.type;
+                    if (ev.type == "delta" || ev.type == "reasoning")
+                        obj["text"] = std::move(ev.text);
+                    if (!ev.msg.empty())
+                        obj["msg"] = std::move(ev.msg);
+                    self->push_output(std::move(obj));
+                },
+                [&](std::string response, std::string, int, int) {
+                    full_response = std::move(response);
+                });
+
+            io.run();
+
+            if (!self->cancelled && !full_response.empty()) {
                 std::lock_guard<std::mutex> lock(self->mtx);
                 if (self->cancelled) return;
                 boost::json::object am;
                 am["role"] = "assistant";
-                am["content"] = std::move(fr);
+                am["content"] = std::move(full_response);
                 self->history.push_back(std::move(am));
             }
         });
@@ -438,7 +293,7 @@ static void handleUserMessageAsync(ChatApp* app, const std::string& text)
         };
 
         std::weak_ptr<ChatApp> weak_self = app->shared_from_this();
-        auto on_done = [weak_self](std::string response, std::string) {
+        auto on_done = [weak_self](std::string response, std::string, int, int) {
             auto self = weak_self.lock();
             if (!self) return;
             if (self->cancelled) return;
@@ -454,7 +309,7 @@ static void handleUserMessageAsync(ChatApp* app, const std::string& text)
         auto stream = std::make_shared<LlmClient>(*io);
         app->current_stream = stream;
         stream->start("api.deepseek.com", "443",
-            boost::json::serialize(body), "Bearer " + apiKey,
+            body, "Bearer " + apiKey,
             std::move(push_event), std::move(on_done));
     }
 
@@ -483,18 +338,46 @@ static boost::json::array handleUserMessageLegacy(ChatApp* app, const std::strin
 
     auto self = app->shared_from_this();
     std::thread t([self, history_copy]() {
-        auto push_event = [self](boost::json::object obj) {
-            if (self->cancelled) return;
-            self->push_output(std::move(obj));
-        };
-        std::string fr, fg;
-        callDeepSeekLegacy(history_copy, push_event, fr, fg);
-        if (!fr.empty()) {
+        std::string apiKey = Config::instance().deepSeekApiKey();
+        if (apiKey.empty()) {
+            boost::json::object end;
+            end["type"] = "stream_end";
+            end["msg"]  = "missing deepseek_api_key in config.json";
+            if (!self->cancelled) self->push_output(std::move(end));
+            return;
+        }
+
+        boost::json::array msgs;
+        for (const auto& m : history_copy) msgs.push_back(m);
+        std::string body = llm::build_chat_body(msgs);
+
+        asio::io_context io;
+        auto client = std::make_shared<LlmClient>(io);
+        std::string full_response;
+
+        client->start("api.deepseek.com", "443", body, "Bearer " + apiKey,
+            [&](LlmEvent ev) {
+                if (self->cancelled) { client->cancel(); return; }
+                boost::json::object obj;
+                obj["type"] = ev.type;
+                if (ev.type == "delta" || ev.type == "reasoning")
+                    obj["text"] = std::move(ev.text);
+                if (!ev.msg.empty())
+                    obj["msg"] = std::move(ev.msg);
+                self->push_output(std::move(obj));
+            },
+            [&](std::string response, std::string, int, int) {
+                full_response = std::move(response);
+            });
+
+        io.run();
+
+        if (!self->cancelled && !full_response.empty()) {
             std::lock_guard<std::mutex> lock(self->mtx);
             if (self->cancelled) return;
             boost::json::object am;
             am["role"] = "assistant";
-            am["content"] = std::move(fr);
+            am["content"] = std::move(full_response);
             self->history.push_back(std::move(am));
         }
     });
@@ -585,8 +468,7 @@ void app_on_input(void* p, const char* input_json)
                          << (text.size() > 20 ? "..." : "") << "\""
                          << " (streaming=" << app->streaming << ")");
                 if (app->streaming) {
-                    std::lock_guard<std::mutex> lock(app->mtx);
-                    app->input_queue.push_back(text);
+                    app->input_queue.push(text);
                     CHAT_LOG("[chat-q]", "queued message (queue size="
                              << app->input_queue.size() << ")");
                 } else {
@@ -649,7 +531,6 @@ int app_is_done(void* p)
 int app_queue_size(void* p)
 {
     auto* app = static_cast<ChatApp*>(p);
-    std::lock_guard<std::mutex> lock(app->mtx);
     return static_cast<int>(app->input_queue.size());
 }
 

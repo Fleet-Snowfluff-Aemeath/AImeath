@@ -2,12 +2,13 @@
 
 Session::Session(tcp::socket socket, Logger& logger,
                  AppModuleCache& cache, ThreadPool* fallback_pool,
-                 asio::io_context* io_ctx)
+                 asio::io_context* io_ctx, int port)
     : logger_(logger)
     , cache_(cache)
     , fallback_pool_(fallback_pool)
     , io_ctx_(io_ctx)
     , strand_(io_ctx->get_executor())
+    , port_(port)
 {
     stream_.emplace(std::move(socket));
     logger_.info() << "[sess:" << this << "] new connection";
@@ -65,7 +66,11 @@ void Session::do_http_read()
                 self->logger_.warn() << "[sess:" << self.get() << "] http read error: " << ec.message();
                 return;
             }
-            self->do_ws_accept();
+            if (websocket::is_upgrade(self->req_)) {
+                self->do_ws_accept();
+            } else {
+                self->do_http_response();
+            }
         }));
 }
 
@@ -83,6 +88,52 @@ void Session::do_ws_accept()
             self->logger_.info() << "[sess:" << self.get() << "] ws upgrade ok";
             self->buf_.clear();
             self->do_read_first_msg();
+        }));
+}
+
+void Session::do_http_response()
+{
+    namespace http = beast::http;
+
+    logger_.info() << "[sess:" << this << "] http request: " << req_.method_string() << " " << req_.target();
+
+    auto self = shared_from_this();
+
+    if (req_.method() == http::verb::options) {
+        http::response<http::empty_body> res;
+        res.version(11);
+        res.result(http::status::no_content);
+        res.set(http::field::server, "gameserver");
+        res.set(http::field::access_control_allow_origin, "*");
+        res.set(http::field::access_control_allow_methods, "GET, OPTIONS");
+        res.set(http::field::access_control_allow_headers, "*");
+        res.set(http::field::access_control_max_age, "86400");
+        http::async_write(*stream_, res,
+            asio::bind_executor(strand_, [self](beast::error_code ec, std::size_t) {
+                if (ec)
+                    self->logger_.warn() << "[sess:" << self.get() << "] http write error: " << ec.message();
+            }));
+        return;
+    }
+
+    http::response<http::string_body> res;
+    res.version(11);
+    res.result(http::status::ok);
+    res.set(http::field::server, "gameserver");
+    res.set(http::field::content_type, "application/json");
+    res.set(http::field::access_control_allow_origin, "*");
+
+    boost::json::object obj;
+    obj["port"] = port_;
+    res.body() = boost::json::serialize(obj);
+    res.prepare_payload();
+
+    http::async_write(*stream_, res,
+        asio::bind_executor(strand_, [self](beast::error_code ec, std::size_t) {
+            if (ec)
+                self->logger_.warn() << "[sess:" << self.get() << "] http write error: " << ec.message();
+            else
+                self->logger_.info() << "[sess:" << self.get() << "] http response sent";
         }));
 }
 
@@ -246,6 +297,7 @@ Listener::Listener(asio::io_context& io, Logger& logger,
     , logger_(logger)
     , cache_(cache)
     , fallback_pool_(fallback_pool)
+    , port_(port)
 {}
 
 void Listener::run()
@@ -268,7 +320,7 @@ void Listener::do_accept()
                 auto session = std::make_shared<Session>(
                     std::move(socket), self->logger_,
                     self->cache_, self->fallback_pool_,
-                    &self->io_);
+                    &self->io_, self->port_);
                 session->start();
             } else if (ec != asio::error::operation_aborted) {
                 self->logger_.warn() << "accept error: " << ec.message();

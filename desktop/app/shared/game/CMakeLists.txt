@@ -4,7 +4,10 @@ project(game_shared LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-set(BOOST_ROOT "/usr/local/boost_1_91" CACHE PATH "Boost installation root directory")
+set(BOOST_ROOT "/usr/local/boost_1_91" CACHE PATH "Boost installation root directory (clear to search system paths)")
+if(BOOST_ROOT AND NOT EXISTS "${BOOST_ROOT}")
+    set(BOOST_ROOT "" CACHE PATH "Boost installation root directory (clear to search system paths)" FORCE)
+endif()
 find_package(Boost REQUIRED COMPONENTS json)
 
 add_library(game_shared INTERFACE)

@@ -9,7 +9,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output/lib)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output/lib)
 
-set(BOOST_ROOT "/usr/local/boost_1_91" CACHE PATH "Boost installation root directory")
+set(BOOST_ROOT "/usr/local/boost_1_91" CACHE PATH "Boost installation root directory (clear to search system paths)")
+if(BOOST_ROOT AND NOT EXISTS "${BOOST_ROOT}")
+    set(BOOST_ROOT "" CACHE PATH "Boost installation root directory (clear to search system paths)" FORCE)
+endif()
 find_package(Boost REQUIRED COMPONENTS json)
 
 add_library(pacman SHARED

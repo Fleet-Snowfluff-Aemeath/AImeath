@@ -82,7 +82,7 @@ TEST(WsServerSessionTest, ConstructSession)
     socket2.close();
 
     auto session = std::make_shared<Session>(
-        std::move(socket1), logger, cache, &fallback, &io);
+        std::move(socket1), logger, cache, &fallback, &io, DEFAULT_PORT);
     EXPECT_NO_THROW(session->start());
     fallback.shutdown();
 }
@@ -106,6 +106,6 @@ TEST(WsServerSessionTest, ConstructSessionWithNoFallbackPool)
     socket2.close();
 
     auto session = std::make_shared<Session>(
-        std::move(socket1), logger, cache, nullptr, &io);
+        std::move(socket1), logger, cache, nullptr, &io, DEFAULT_PORT);
     EXPECT_NO_THROW(session->start());
 }

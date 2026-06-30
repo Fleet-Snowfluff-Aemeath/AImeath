@@ -10,7 +10,6 @@ import 'xterm/css/xterm.css'
 
 const WS_URL = `ws://${location.hostname}:3001`
 const BASE = 'desktop/public/home'
-const BASE_REAL = '/home/huanli/lab/desktop/public/home'
 
 const termContainer = ref(null)
 let term = null
@@ -25,7 +24,7 @@ function connect() {
     ws.send(JSON.stringify({
       app: 'terminal',
       action: 'exec',
-      cmd: `cd ${BASE_REAL} && PS1='\\w # ' bash --norc`
+      cmd: `cd ${BASE} && PS1='\\w # ' bash --norc`
     }))
   }
 

@@ -49,7 +49,7 @@ class Session : public std::enable_shared_from_this<Session>
 public:
     Session(tcp::socket socket, Logger& logger,
             AppModuleCache& cache, ThreadPool* fallback_pool,
-            asio::io_context* io_ctx);
+            asio::io_context* io_ctx, int port);
 
     void start();
     void on_app_output(const char* json);
@@ -58,6 +58,7 @@ private:
     void enqueue(std::string json);
     void do_write();
     void do_http_read();
+    void do_http_response();
     void do_ws_accept();
     void do_read_first_msg();
     void route_and_setup();
@@ -80,6 +81,7 @@ private:
     ThreadPool*     fallback_pool_;
     asio::io_context* io_ctx_;
     asio::strand<asio::io_context::executor_type> strand_;
+    int             port_;
     std::string     first_msg_;
 
     std::deque<std::string> write_queue_;
@@ -94,6 +96,8 @@ public:
              AppModuleCache& cache, ThreadPool* fallback_pool,
              int port = DEFAULT_PORT);
 
+    int port() const { return port_; }
+
     void run();
     void shutdown();
 
@@ -105,4 +109,5 @@ private:
     Logger&          logger_;
     AppModuleCache&  cache_;
     ThreadPool*      fallback_pool_;
+    int              port_;
 };

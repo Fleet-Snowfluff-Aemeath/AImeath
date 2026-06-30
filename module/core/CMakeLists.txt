@@ -6,7 +6,10 @@ endif()
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-set(BOOST_ROOT "/usr/local/boost_1_91" CACHE PATH "Boost installation root directory")
+set(BOOST_ROOT "/usr/local/boost_1_91" CACHE PATH "Boost installation root directory (clear to search system paths)")
+if(BOOST_ROOT AND NOT EXISTS "${BOOST_ROOT}")
+    set(BOOST_ROOT "" CACHE PATH "Boost installation root directory (clear to search system paths)" FORCE)
+endif()
 find_package(OpenSSL REQUIRED)
 find_package(Threads REQUIRED)
 find_package(Boost REQUIRED COMPONENTS url json filesystem)
@@ -22,13 +25,16 @@ add_library(core SHARED
     src/threadmgr.cpp
     src/timer.cpp
     src/logger.cpp
+    src/config.cpp
     src/eventmgr.cpp
     src/netconn.cpp
     src/wsutil.cpp
     src/ws_server.cpp
+    src/vfs.cpp
+    src/pty_session.cpp
 )
 target_include_directories(core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
-target_link_libraries(core PUBLIC OpenSSL::SSL OpenSSL::Crypto Threads::Threads Boost::url Boost::json app)
+target_link_libraries(core PUBLIC OpenSSL::SSL OpenSSL::Crypto Threads::Threads Boost::url Boost::json app util)
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 find_package(GTest REQUIRED)
@@ -39,6 +45,9 @@ add_executable(tests
     test/eventmgr_test.cpp
     test/netconn_test.cpp
     test/ws_server_test.cpp
+    test/message_queue_test.cpp
+    test/vfs_test.cpp
+    test/pty_session_test.cpp
 )
 set_target_properties(tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output/test)
 target_link_libraries(tests core GTest::GTest GTest::Main)
