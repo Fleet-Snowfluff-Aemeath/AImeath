@@ -26,8 +26,8 @@ jobs:
           wget -q https://archives.boost.io/release/1.91.0/source/boost_1_91_0.tar.gz
           tar xzf boost_1_91_0.tar.gz
           cd boost_1_91_0
-           ./bootstrap.sh --prefix=${BOOST_ROOT} --with-libraries=json,url,filesystem,system
-          sudo ./b2 install -j$(nproc) --prefix=${BOOST_ROOT} --with-json --with-url --with-filesystem --with-system variant=release link=shared threading=multi
+           ./bootstrap.sh --prefix=${BOOST_ROOT} --with-libraries=json,url,filesystem
+          sudo ./b2 install -j$(nproc) --prefix=${BOOST_ROOT} --with-json --with-url --with-filesystem variant=release link=shared threading=multi
           echo "BOOST_ROOT=${BOOST_ROOT}" >> $GITHUB_ENV
           sudo ldconfig ${BOOST_ROOT}/lib
 
