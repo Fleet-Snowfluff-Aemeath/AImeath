@@ -8,7 +8,7 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
@@ -17,11 +17,18 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq \
-            build-essential \
-            cmake \
-            libboost-all-dev \
-            libssl-dev
+          sudo apt-get install -y -qq build-essential cmake libssl-dev
+
+      - name: Build Boost 1.91.0
+        run: |
+          BOOST_ROOT=/usr/local/boost_1_91
+          wget -q https://archives.boost.io/release/1.91.0/source/boost_1_91_0.tar.gz
+          tar xzf boost_1_91_0.tar.gz
+          cd boost_1_91_0
+          ./bootstrap.sh --prefix=${BOOST_ROOT} --with-libraries=json,url,filesystem
+          sudo ./b2 install -j$(nproc) --prefix=${BOOST_ROOT} --with-json --with-url --with-filesystem variant=release link=shared threading=multi
+          echo "BOOST_ROOT=${BOOST_ROOT}" >> $GITHUB_ENV
+          sudo ldconfig ${BOOST_ROOT}/lib
 
       - name: Build Google Test
         run: |
@@ -58,7 +65,7 @@ jobs:
       - name: C++ unit tests (chat_tests)
         run: |
           cd build
-          LD_LIBRARY_PATH=output/lib ./output/test/chat_tests
+          LD_LIBRARY_PATH=output/lib:${BOOST_ROOT}/lib ./output/test/chat_tests
 
       - name: module/core standalone test
         run: cd module/core && bash test_build.sh
