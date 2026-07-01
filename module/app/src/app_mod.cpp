@@ -8,7 +8,7 @@ static boost::dll::shared_library try_load(const std::string& name)
     std::string soname = "lib" + name + ".so";
 
     auto try_one = [&](const std::string& path) -> boost::dll::shared_library {
-        std::error_code ec;
+        boost::system::error_code ec;
         boost::dll::shared_library lib(path, ec);
         if (!ec) return lib;
         return {};
