@@ -1,5 +1,6 @@
 #include <benchmark/benchmark.h>
 #include "ws_server.hpp"
+#include <app_mod.hpp>
 #include <boost/asio.hpp>
 
 static void BM_WsServerListenerCreate(benchmark::State& state)
