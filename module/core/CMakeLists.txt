@@ -82,8 +82,9 @@ target_include_directories(bench_netconn PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/inc
 
 add_executable(bench_ws_server benchmark/ws_server_bench.cpp)
 set_target_properties(bench_ws_server PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output/bench)
-target_link_libraries(bench_ws_server core benchmark::benchmark)
+target_link_libraries(bench_ws_server core app benchmark::benchmark)
 target_include_directories(bench_ws_server PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_include_directories(bench_ws_server PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../app/include)
 
 add_custom_target(bench
     COMMAND $<TARGET_FILE:bench_threadpool>
