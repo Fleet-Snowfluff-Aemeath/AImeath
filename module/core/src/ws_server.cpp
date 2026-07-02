@@ -208,6 +208,8 @@ void Session::route_and_setup()
         Config::instance().sessionRegistry().registerSession(app_name, shared_from_this());
         if (!window_id_.empty())
             Config::instance().sessionRegistry().registerWindow(window_id_, session_id_, app_name);
+    } else {
+        Config::instance().sessionRegistry().registerSession(app_name, shared_from_this());
     }
 
     if (mod_.is_async()) {
@@ -377,16 +379,18 @@ std::string Session::call_app_process_and_notify(const std::string& input)
 void Session::do_cleanup()
 {
     closing_ = true;
-    if (!app_name_.empty() && app_name_ != appname::CHAT) {
+    if (!app_name_.empty()) {
         Config::instance().sessionRegistry().unregisterSession(app_name_, this);
         if (!window_id_.empty())
             Config::instance().sessionRegistry().unregisterWindow(window_id_);
-        boost::json::object doneState;
-        doneState["over"] = true;
-        doneState["reason"] = "session_closed";
-        doneState["session_id"] = session_id_;
-        if (!window_id_.empty()) doneState["window_id"] = window_id_;
-        Config::instance().fireAppStateNotify(app_name_, boost::json::serialize(doneState));
+        if (app_name_ != appname::CHAT) {
+            boost::json::object doneState;
+            doneState["over"] = true;
+            doneState["reason"] = "session_closed";
+            doneState["session_id"] = session_id_;
+            if (!window_id_.empty()) doneState["window_id"] = window_id_;
+            Config::instance().fireAppStateNotify(app_name_, boost::json::serialize(doneState));
+        }
     }
     app_.reset();
 }

@@ -836,7 +836,7 @@ boost::json::value AgentServer::executeTool(const std::string& name, const boost
     } else if (name == "terminal_exec") {
         std::string command = a.at("command").as_string().c_str();
         boost::json::object cmd;
-        cmd["action"] = "exec";
+        cmd["action"] = "exec_sync";
         cmd["command"] = command;
         auto r = AppManager::instance().controlApp("terminal", boost::json::serialize(cmd));
         if (!r.is_null()) result["output"] = r;

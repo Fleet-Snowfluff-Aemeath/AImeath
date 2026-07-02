@@ -192,6 +192,28 @@ char* app_process(void* p, const char* input_json)
             usleep(150000);
             return makeReply(json::array{json::object{{"type","output"},{"text",""}}});
         }
+        else if (action == "exec_sync")
+        {
+            auto cmdIt = obj.find("command");
+            if (cmdIt == obj.end() || !cmdIt->value().is_string())
+                return makeReply(json::array{json::object{{"type","error"},{"msg","missing command"}}});
+
+            std::string cmd(cmdIt->value().as_string());
+            std::string output;
+            std::array<char, 4096> buf;
+
+            FILE* pipe = popen(cmd.c_str(), "r");
+            if (!pipe)
+                return makeReply(json::array{json::object{{"type","error"},{"msg","popen failed"}}});
+
+            while (fgets(buf.data(), buf.size(), pipe))
+                output += buf.data();
+            int rc = pclose(pipe);
+            if (rc != 0 && output.empty())
+                return makeReply(json::array{json::object{{"type","error"},{"msg","command failed: " + cmd}}});
+
+            return makeReply(json::array{json::object{{"type","output"},{"text",std::move(output)}}});
+        }
         else if (action == "stdin")
         {
             auto dataIt = obj.find("data");
