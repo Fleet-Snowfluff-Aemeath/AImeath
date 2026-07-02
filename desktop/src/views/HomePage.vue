@@ -47,6 +47,13 @@
             >
               <span class="tab-icon" v-html="tab.icon"></span>
               <span class="tab-name">{{ tab.name }}</span>
+              <button
+                v-if="win.tabs.length > 1"
+                class="tab-close"
+                @mousedown.stop
+                @click.stop="closeTab(id, ti)"
+                title="关闭页签"
+              >×</button>
             </div>
           </div>
           <iframe
@@ -198,6 +205,11 @@ function openApp(app, opts) {
 function closeWindow(id) {
   const win = windows[id]
   if (win) {
+    if (win.tabs && win.tabs.length > 1) {
+      while (win.tabs.length > 0)
+        closeTab(id, 0, true)
+      return
+    }
     const iframe = document.querySelector(`.win-window[data-wid="${id}"] iframe`)
     if (iframe && iframe.contentWindow) {
       iframe.contentWindow.postMessage({ type: 'window_closing' }, '*')
@@ -211,6 +223,29 @@ function closeWindow(id) {
     }
   }
   delete windows[id]
+}
+
+function closeTab(id, ti, silent) {
+  const win = windows[id]
+  if (!win || !win.tabs || ti < 0 || ti >= win.tabs.length) return
+  if (win.tabs.length <= 1) {
+    if (!silent) closeWindow(id)
+    return
+  }
+  const iframe = document.querySelector(`.win-window[data-wid="${id}"] iframe:nth-of-type(${ti + 1})`)
+  if (iframe && iframe.contentWindow) {
+    iframe.contentWindow.postMessage({ type: 'window_closing' }, '*')
+  }
+  win.tabs.splice(ti, 1)
+  if (win.activeTab >= win.tabs.length)
+    win.activeTab = win.tabs.length - 1
+  if (ti <= win.activeTab) {
+    const newTab = win.tabs[win.activeTab]
+    if (newTab) {
+      win.name = newTab.name
+      win.icon = newTab.icon
+    }
+  }
 }
 
 function minimizeWindow(id) {
@@ -372,7 +407,12 @@ function onPostMessage(e) {
     const appName = e.data.app
     for (const id in windows) {
       if (windows[id].appKey === `/${appName}`) {
-        closeWindow(id)
+        const win = windows[id]
+        if (win.tabs && win.tabs.length > 1) {
+          closeTab(id, win.tabs.length - 1)
+        } else {
+          closeWindow(id)
+        }
         break
       }
     }
@@ -643,6 +683,28 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.tab-close {
+  width: 16px;
+  height: 16px;
+  border: none;
+  background: transparent;
+  color: #666;
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  margin-left: auto;
+  flex-shrink: 0;
+  line-height: 1;
+  transition: background 0.15s, color 0.15s;
+}
+.tab-close:hover {
+  background: rgba(255,255,255,0.15);
+  color: #fff;
 }
 
 /* Resize handles */
