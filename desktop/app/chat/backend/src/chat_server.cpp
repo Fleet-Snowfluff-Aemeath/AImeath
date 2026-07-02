@@ -55,6 +55,18 @@ struct AppInstance
     std::string appName;
 };
 
+static const char* displayName(const std::string& appName)
+{
+    static const std::map<std::string, const char*> names = {
+        {"gomoku", "五子棋"}, {"snake", "贪食蛇"},
+        {"pacman", "吃豆豆"}, {"go", "围棋"},
+        {"terminal", "终端"}, {"filemanager", "文件管理器"},
+        {"chat", "聊天"},
+    };
+    auto it = names.find(appName);
+    return it != names.end() ? it->second : appName.c_str();
+}
+
 struct ChatApp : std::enable_shared_from_this<ChatApp>
 {
     std::vector<boost::json::object> history;
@@ -450,13 +462,21 @@ static void handleUserMessageAsync(ChatApp* app, const std::string& text)
     // 标记哪些 (name, idx) 已被注入（通过 app->instances 内实例会话的）
     std::set<std::pair<std::string,int>> injected;
 
+    // 判断多个实例时是否显示编号（仅当同名实例数 > 1）
+    auto allSessions = registry.listSessions();
+    std::map<std::string,int> sessionCount;
+    for (auto& kv : allSessions) sessionCount[kv.first]++;
+
     for (auto& [name, inst] : app->instances) {
         int idx = 0;
         while (true) {
             auto sess = registry.findSession(name, idx);
             if (!sess) break;
             std::string s = sess->call_app_process("{\"action\":\"get_state\"}");
-            stateSummary += "- " + name + " #" + std::to_string(idx) + ": " + s + "\n";
+            std::string label = std::string(displayName(name));
+            if (sessionCount[name] > 1)
+                label += "-" + std::to_string(idx + 1);
+            stateSummary += "- " + label + ": " + s + "\n";
             injected.insert({name, idx});
             anyOpen = true;
             ++idx;
@@ -466,13 +486,13 @@ static void handleUserMessageAsync(ChatApp* app, const std::string& text)
             char* raw = inst.mod.app_process(inst.handle.get(), "{\"action\":\"get_state\"}");
             std::string s(raw ? raw : "[]");
             if (inst.mod.app_free_string) inst.mod.app_free_string(raw);
-            stateSummary += "- " + name + " (离线): " + s + "\n";
+            stateSummary += "- " + std::string(displayName(name)) + ": " + s + "\n";
             anyOpen = true;
         }
     }
 
     // 注入 SessionRegistry 中尚未注入的实例（用户直接打开但 agent 未 open_app 的）
-    for (auto& kv : registry.listSessions()) {
+    for (auto& kv : allSessions) {
         auto& name = kv.first;
         int idx = kv.second;
         if (injected.count({name, idx}))
@@ -480,7 +500,10 @@ static void handleUserMessageAsync(ChatApp* app, const std::string& text)
         auto sess = registry.findSession(name, idx);
         if (!sess) continue;
         std::string s = sess->call_app_process("{\"action\":\"get_state\"}");
-        stateSummary += "- " + name + " #" + std::to_string(idx) + ": " + s + "\n";
+        std::string label = std::string(displayName(name));
+        if (sessionCount[name] > 1)
+            label += "-" + std::to_string(idx + 1);
+        stateSummary += "- " + label + ": " + s + "\n";
         anyOpen = true;
     }
 
