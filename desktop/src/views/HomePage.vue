@@ -239,12 +239,10 @@ function closeTab(id, ti, silent) {
   win.tabs.splice(ti, 1)
   if (win.activeTab >= win.tabs.length)
     win.activeTab = win.tabs.length - 1
-  if (ti <= win.activeTab) {
-    const newTab = win.tabs[win.activeTab]
-    if (newTab) {
-      win.name = newTab.name
-      win.icon = newTab.icon
-    }
+  const active = win.tabs[win.activeTab]
+  if (active) {
+    win.name = active.name
+    win.icon = active.icon
   }
 }
 
@@ -418,7 +416,7 @@ function onPostMessage(e) {
       if (windows[id].appKey === `/${appName}`) {
         const win = windows[id]
         if (win.tabs && win.tabs.length > 1) {
-          closeTab(id, win.tabs.length - 1)
+          closeTab(id, 0)
         } else {
           closeWindow(id)
         }
