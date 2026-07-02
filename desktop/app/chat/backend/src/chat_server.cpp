@@ -41,6 +41,10 @@ namespace asio  = boost::asio;
 struct ChatApp;
 static void processNextInQueue(ChatApp* app);
 static void handleUserMessageAsync(ChatApp* app, const std::string& text);
+static void processToolCalls(ChatApp* app,
+    const std::vector<LlmToolCall>& mergedList,
+    const std::string& response,
+    const std::string& reasoning);
 
 struct AppInstance
 {
@@ -58,6 +62,7 @@ struct ChatApp : std::enable_shared_from_this<ChatApp>
     std::atomic<bool> cancelled{false};
     std::atomic<bool> streaming{false};
     int round = 0;
+    int consecutive_tool_rounds = 0;
 
     app_output_fn output_cb = nullptr;
     void* output_udata = nullptr;
@@ -175,6 +180,212 @@ static void drainAndPush(ChatApp* app)
     app->pending_outputs.clear();
 }
 
+// ---- App instance management ----
+
+static AppInstance* ensureAppInstance(ChatApp* app, const std::string& name)
+{
+    auto it = app->instances.find(name);
+    if (it != app->instances.end())
+        return &it->second;
+    if (!app->mod_cache) return nullptr;
+    try {
+        AppModule mod = app->mod_cache->load(name);
+        if (!mod) return nullptr;
+        AppPtr handle = mod.create("{}");
+        if (!handle) return nullptr;
+        char* initResult = mod.app_process(handle.get(),
+            R"({"action":"new_game","width":20,"height":20})");
+        if (mod.app_free_string)
+            mod.app_free_string(initResult);
+        AppInstance inst;
+        inst.mod = mod;
+        inst.handle = std::move(handle);
+        inst.appName = name;
+        auto& ref = app->instances[name];
+        ref = std::move(inst);
+        return &app->instances[name];
+    } catch (...) { return nullptr; }
+}
+
+// ---- Forward declaration ----
+
+static void doLlmCall(ChatApp* app, const std::string& body,
+                      bool withTools,
+                      std::function<void(std::string, std::string, std::vector<LlmToolCall>)> onDone);
+
+// ---- Process tool calls from LLM ----
+
+static void processToolCalls(ChatApp* app,
+    const std::vector<LlmToolCall>& mergedList,
+    const std::string& response,
+    const std::string& reasoning)
+{
+    boost::json::object am;
+    am["role"] = "assistant";
+    if (!response.empty()) am["content"] = response;
+    if (!reasoning.empty()) am["reasoning_content"] = reasoning;
+
+    boost::json::array tcArr;
+    for (auto& tc : mergedList) {
+        boost::json::object tcObj;
+        tcObj["id"] = tc.id;
+        tcObj["type"] = "function";
+        tcObj["function"] = {
+            {"name", tc.function_name},
+            {"arguments", tc.function_arguments}
+        };
+        tcArr.push_back(std::move(tcObj));
+    }
+    am["tool_calls"] = std::move(tcArr);
+
+    {
+        std::lock_guard<std::mutex> lock(app->mtx);
+        app->history.push_back(std::move(am));
+    }
+
+    for (auto& tc : mergedList) {
+        boost::json::object tr;
+        tr["role"] = "tool";
+        tr["tool_call_id"] = tc.id;
+        tr["content"] = "{\"success\":true}";
+
+        if (tc.function_name == "open_app") {
+            try {
+                auto args = boost::json::parse(tc.function_arguments);
+                std::string appName = args.as_object()["app"].as_string().c_str();
+                ensureAppInstance(app, appName);
+                boost::json::object agentMsg;
+                agentMsg["type"] = "agent";
+                agentMsg["action"] = "open_app";
+                agentMsg["app"] = appName;
+                if (args.as_object().contains("width"))
+                    agentMsg["width"] = args.as_object()["width"];
+                if (args.as_object().contains("height"))
+                    agentMsg["height"] = args.as_object()["height"];
+                app->push_output(std::move(agentMsg));
+                tr["content"] = "{\"success\":true,\"msg\":\"opened " + appName + "\"}";
+            } catch (...) {
+                tr["content"] = "{\"success\":false,\"msg\":\"failed to parse arguments\"}";
+            }
+        } else if (tc.function_name == "control_app") {
+            try {
+                auto args = boost::json::parse(tc.function_arguments);
+                std::string appName = args.as_object()["app"].as_string().c_str();
+                int value = -1;
+                if (args.as_object().contains("coord")) {
+                    auto& coord = args.as_object()["coord"].as_array();
+                    int row = coord[0].as_int64();
+                    int col = coord[1].as_int64();
+                    value = row * 20 + col;
+                } else if (args.as_object().contains("value")) {
+                    value = args.as_object()["value"].as_int64();
+                }
+
+                boost::json::object agentMsg;
+                agentMsg["type"] = "agent";
+                agentMsg["action"] = "control_app";
+                agentMsg["app"] = appName;
+                agentMsg["value"] = value;
+                app->push_output(std::move(agentMsg));
+
+                auto* inst = ensureAppInstance(app, appName);
+                if (inst) {
+                    boost::json::object cmd;
+                    cmd["action"] = "tick";
+                    cmd["value"] = value;
+                    std::string cmdStr = boost::json::serialize(cmd);
+                    char* resultStr = inst->mod.app_process(
+                        inst->handle.get(), cmdStr.c_str());
+                    std::string result(resultStr ? resultStr : "[]");
+                    if (inst->mod.app_free_string)
+                        inst->mod.app_free_string(resultStr);
+                    tr["content"] = "{\"success\":true,\"result\":" + result + "}";
+                } else {
+                    tr["content"] = "{\"success\":true}";
+                }
+            } catch (...) {
+                tr["content"] = "{\"success\":false,\"msg\":\"failed to parse arguments\"}";
+            }
+        } else if (tc.function_name == "close_app") {
+            try {
+                auto args = boost::json::parse(tc.function_arguments);
+                std::string appName = args.as_object()["app"].as_string().c_str();
+                app->instances.erase(appName);
+                boost::json::object agentMsg;
+                agentMsg["type"] = "agent";
+                agentMsg["action"] = "close_app";
+                agentMsg["app"] = appName;
+                app->push_output(std::move(agentMsg));
+                tr["content"] = "{\"success\":true,\"msg\":\"closed " + appName + "\"}";
+            } catch (...) {
+                tr["content"] = "{\"success\":false,\"msg\":\"failed to parse arguments\"}";
+            }
+        } else if (tc.function_name == "get_app_state") {
+            try {
+                auto args = boost::json::parse(tc.function_arguments);
+                std::string appName = args.as_object()["app"].as_string().c_str();
+                auto* inst = ensureAppInstance(app, appName);
+                if (!inst) {
+                    tr["content"] = "{\"success\":false,\"msg\":\"failed to load " + appName + "\"}";
+                } else {
+                    char* stateStr = inst->mod.app_process(
+                        inst->handle.get(), "{\"action\":\"get_state\"}");
+                    std::string state(stateStr ? stateStr : "[]");
+                    if (inst->mod.app_free_string)
+                        inst->mod.app_free_string(stateStr);
+                    tr["content"] = "{\"success\":true,\"state\":" + state + "}";
+                }
+            } catch (std::exception& e) {
+                tr["content"] = "{\"success\":false,\"msg\":\"error: " + std::string(e.what()) + "\"}";
+            }
+        } else {
+            tr["content"] = "{\"success\":false,\"msg\":\"unknown tool: " + tc.function_name + "\"}";
+        }
+
+        {
+            std::lock_guard<std::mutex> lock(app->mtx);
+            app->history.push_back(std::move(tr));
+        }
+    }
+
+    // 继续LLM调用，让模型回应或做更多工具调用 (最多5轮)
+    app->consecutive_tool_rounds++;
+    if (app->consecutive_tool_rounds > 5) return;
+
+    std::vector<boost::json::object> hc2;
+    {
+        std::lock_guard<std::mutex> lock(app->mtx);
+        hc2 = app->history;
+    }
+    boost::json::array msgs2;
+    for (auto& m : hc2) msgs2.push_back(m);
+    std::string body2 = llm::build_chat_body(msgs2, "deepseek-v4-flash", true, false);
+
+    boost::json::object start2;
+    start2["type"] = "stream_start";
+    app->push_output(std::move(start2));
+
+    doLlmCall(app, body2, true, [app](std::string resp2, std::string reason2, std::vector<LlmToolCall> tcs) {
+        if (app->cancelled) return;
+        app->consecutive_tool_rounds = 0;
+        if (!tcs.empty()) {
+            auto merged = llm::merge_tool_calls(tcs);
+            std::vector<LlmToolCall> mergedList;
+            for (auto& kv : merged)
+                mergedList.push_back(kv.second);
+            processToolCalls(app, mergedList, resp2, reason2);
+        } else {
+            std::lock_guard<std::mutex> lock(app->mtx);
+            boost::json::object am2;
+            am2["role"] = "assistant";
+            if (!resp2.empty()) am2["content"] = resp2;
+            if (!reason2.empty()) am2["reasoning_content"] = reason2;
+            if (!resp2.empty() || !reason2.empty())
+                app->history.push_back(std::move(am2));
+        }
+    });
+}
+
 // ---- Process next queued message ----
 
 static void processNextInQueue(ChatApp* app)
@@ -191,12 +402,6 @@ static void processNextInQueue(ChatApp* app)
     ++app->round;
     handleUserMessageAsync(app, next);
 }
-
-// ---- Async LLM call via shared io_context ----
-
-static void doLlmCall(ChatApp* app, const std::string& body,
-                      bool withTools,
-                      std::function<void(std::string, std::string, std::vector<LlmToolCall>)> onDone);
 
 static void handleUserMessageAsync(ChatApp* app, const std::string& text)
 {
@@ -238,184 +443,10 @@ static void handleUserMessageAsync(ChatApp* app, const std::string& text)
 
         if (!toolCalls.empty()) {
             auto merged = llm::merge_tool_calls(toolCalls);
-
-            boost::json::object am;
-            am["role"] = "assistant";
-            if (!response.empty()) am["content"] = response;
-            if (!reasoning.empty()) am["reasoning_content"] = reasoning;
-
-            boost::json::array tcArr;
             std::vector<LlmToolCall> mergedList;
-            for (auto& kv : merged) {
+            for (auto& kv : merged)
                 mergedList.push_back(kv.second);
-                boost::json::object tcObj;
-                tcObj["id"] = kv.second.id;
-                tcObj["type"] = "function";
-                tcObj["function"] = {
-                    {"name", kv.second.function_name},
-                    {"arguments", kv.second.function_arguments}
-                };
-                tcArr.push_back(std::move(tcObj));
-            }
-            am["tool_calls"] = std::move(tcArr);
-
-            {
-                std::lock_guard<std::mutex> lock(app->mtx);
-                app->history.push_back(std::move(am));
-            }
-
-            auto ensureAppInstance = [app](const std::string& name) -> AppInstance* {
-                auto it = app->instances.find(name);
-                if (it != app->instances.end())
-                    return &it->second;
-                if (!app->mod_cache) return nullptr;
-                try {
-                    AppModule mod = app->mod_cache->load(name);
-                    if (!mod) return nullptr;
-                    AppPtr handle = mod.create("{}");
-                    if (!handle) return nullptr;
-                    // 自动启动游戏/应用，使内部实例有状态可查
-                    char* initResult = mod.app_process(handle.get(),
-                        R"({"action":"new_game","width":20,"height":20})");
-                    if (mod.app_free_string)
-                        mod.app_free_string(initResult);
-                    AppInstance inst;
-                    inst.mod = mod;
-                    inst.handle = std::move(handle);
-                    inst.appName = name;
-                    auto& ref = app->instances[name];
-                    ref = std::move(inst);
-                    return &app->instances[name];
-                } catch (...) { return nullptr; }
-            };
-
-            for (auto& tc : mergedList) {
-                boost::json::object tr;
-                tr["role"] = "tool";
-                tr["tool_call_id"] = tc.id;
-                tr["content"] = "{\"success\":true}";
-
-                if (tc.function_name == "open_app") {
-                    try {
-                        auto args = boost::json::parse(tc.function_arguments);
-                        std::string appName = args.as_object()["app"].as_string().c_str();
-                        // 预加载模块到内部状态
-                        ensureAppInstance(appName);
-                        boost::json::object agentMsg;
-                        agentMsg["type"] = "agent";
-                        agentMsg["action"] = "open_app";
-                        agentMsg["app"] = appName;
-                        if (args.as_object().contains("width"))
-                            agentMsg["width"] = args.as_object()["width"];
-                        if (args.as_object().contains("height"))
-                            agentMsg["height"] = args.as_object()["height"];
-                        app->push_output(std::move(agentMsg));
-                        tr["content"] = "{\"success\":true,\"msg\":\"opened " + appName + "\"}";
-                    } catch (...) {
-                        tr["content"] = "{\"success\":false,\"msg\":\"failed to parse arguments\"}";
-                    }
-                } else if (tc.function_name == "control_app") {
-                    try {
-                        auto args = boost::json::parse(tc.function_arguments);
-                        std::string appName = args.as_object()["app"].as_string().c_str();
-                        int value = args.as_object().contains("value")
-                            ? args.as_object()["value"].as_int64() : -1;
-
-                        // 仍发送前端消息 (保持 UI 同步)
-                        boost::json::object agentMsg;
-                        agentMsg["type"] = "agent";
-                        agentMsg["action"] = "control_app";
-                        agentMsg["app"] = appName;
-                        agentMsg["value"] = value;
-                        app->push_output(std::move(agentMsg));
-
-                        // 直接调用 app_process 获取新状态
-                        auto* inst = ensureAppInstance(appName);
-                        if (inst) {
-                            boost::json::object cmd;
-                            cmd["action"] = "tick";
-                            cmd["value"] = value;
-                            std::string cmdStr = boost::json::serialize(cmd);
-                            char* resultStr = inst->mod.app_process(
-                                inst->handle.get(), cmdStr.c_str());
-                            std::string result(resultStr ? resultStr : "[]");
-                            if (inst->mod.app_free_string)
-                                inst->mod.app_free_string(resultStr);
-                            tr["content"] = "{\"success\":true,\"result\":" + result + "}";
-                        } else {
-                            tr["content"] = "{\"success\":true}";
-                        }
-                    } catch (...) {
-                        tr["content"] = "{\"success\":false,\"msg\":\"failed to parse arguments\"}";
-                    }
-                } else if (tc.function_name == "close_app") {
-                    try {
-                        auto args = boost::json::parse(tc.function_arguments);
-                        std::string appName = args.as_object()["app"].as_string().c_str();
-                        // 清理内部实例
-                        app->instances.erase(appName);
-                        boost::json::object agentMsg;
-                        agentMsg["type"] = "agent";
-                        agentMsg["action"] = "close_app";
-                        agentMsg["app"] = appName;
-                        app->push_output(std::move(agentMsg));
-                        tr["content"] = "{\"success\":true,\"msg\":\"closed " + appName + "\"}";
-                    } catch (...) {
-                        tr["content"] = "{\"success\":false,\"msg\":\"failed to parse arguments\"}";
-                    }
-                } else if (tc.function_name == "get_app_state") {
-                    try {
-                        auto args = boost::json::parse(tc.function_arguments);
-                        std::string appName = args.as_object()["app"].as_string().c_str();
-                        auto* inst = ensureAppInstance(appName);
-                        if (!inst) {
-                            tr["content"] = "{\"success\":false,\"msg\":\"failed to load " + appName + "\"}";
-                        } else {
-                            char* stateStr = inst->mod.app_process(
-                                inst->handle.get(), "{\"action\":\"get_state\"}");
-                            std::string state(stateStr ? stateStr : "[]");
-                            if (inst->mod.app_free_string)
-                                inst->mod.app_free_string(stateStr);
-                            tr["content"] = "{\"success\":true,\"state\":" + state + "}";
-                        }
-                    } catch (std::exception& e) {
-                        tr["content"] = "{\"success\":false,\"msg\":\"error: " + std::string(e.what()) + "\"}";
-                    }
-                } else {
-                    tr["content"] = "{\"success\":false,\"msg\":\"unknown tool: " + tc.function_name + "\"}";
-                }
-
-                {
-                    std::lock_guard<std::mutex> lock(app->mtx);
-                    app->history.push_back(std::move(tr));
-                }
-            }
-
-            std::vector<boost::json::object> hc2;
-            {
-                std::lock_guard<std::mutex> lock(app->mtx);
-                hc2 = app->history;
-            }
-            boost::json::array msgs2;
-            for (auto& m : hc2) msgs2.push_back(m);
-            std::string body2 = llm::build_chat_body(msgs2, "deepseek-v4-flash", true, false);
-
-            boost::json::object start2;
-            start2["type"] = "stream_start";
-            app->push_output(std::move(start2));
-
-            doLlmCall(app, body2, false, [app](std::string resp2, std::string reason2, std::vector<LlmToolCall>) {
-                if (app->cancelled) return;
-                {
-                    std::lock_guard<std::mutex> lock(app->mtx);
-                    boost::json::object am2;
-                    am2["role"] = "assistant";
-                    if (!resp2.empty()) am2["content"] = resp2;
-                    if (!reason2.empty()) am2["reasoning_content"] = reason2;
-                    if (!resp2.empty() || !reason2.empty())
-                        app->history.push_back(std::move(am2));
-                }
-            });
+            processToolCalls(app, mergedList, response, reasoning);
         } else {
             {
                 std::lock_guard<std::mutex> lock(app->mtx);
