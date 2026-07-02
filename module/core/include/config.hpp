@@ -2,8 +2,10 @@
 
 #include <string>
 #include <map>
+#include <vector>
 #include <memory>
 #include <mutex>
+#include <utility>
 #include <boost/json.hpp>
 #include <boost/noncopyable.hpp>
 
@@ -13,13 +15,13 @@ class SessionRegistry : private boost::noncopyable
 {
 public:
     void registerSession(const std::string& appName, std::weak_ptr<Session> session);
-    std::shared_ptr<Session> findSession(const std::string& appName);
-    void unregisterSession(const std::string& appName);
-    std::vector<std::string> listSessions();
+    std::shared_ptr<Session> findSession(const std::string& appName, int index = 0);
+    void unregisterSession(const std::string& appName, Session* ptr);
+    std::vector<std::pair<std::string, int>> listSessions();
 
 private:
     std::mutex mtx_;
-    std::map<std::string, std::weak_ptr<Session>> sessions_;
+    std::map<std::string, std::vector<std::weak_ptr<Session>>> sessions_;
 };
 
 class Config : private boost::noncopyable

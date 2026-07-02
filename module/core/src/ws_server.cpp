@@ -317,7 +317,7 @@ void Session::close_ws()
     if (ws_ && !closing_) {
         closing_ = true;
         if (!app_name_.empty() && app_name_ != appname::CHAT)
-            Config::instance().sessionRegistry().unregisterSession(app_name_);
+            Config::instance().sessionRegistry().unregisterSession(app_name_, this);
         logger_.info() << "[sess:" << this << "] closing ws";
         beast::error_code ec;
         ws_->close(websocket::close_code::normal, ec);

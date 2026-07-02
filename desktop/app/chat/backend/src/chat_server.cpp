@@ -10,6 +10,7 @@
 #include <atomic>
 #include <mutex>
 #include <map>
+#include <set>
 #include <utility>
 #include <memory>
 #include <chrono>
@@ -188,9 +189,9 @@ static AppInstance* ensureAppInstance(ChatApp* app, const std::string& name);
 // ---- Session-backed app_process ----
 // 优先通过 SessionRegistry 查询用户在 WebSocket 上的真实游戏实例，
 // 不存在时回退到 ChatApp 内部的内置实例。
-static std::string appProcessOnApp(ChatApp* app, const std::string& appName, const std::string& input)
+static std::string appProcessOnApp(ChatApp* app, const std::string& appName, const std::string& input, int instance = 0)
 {
-    auto sess = Config::instance().sessionRegistry().findSession(appName);
+    auto sess = Config::instance().sessionRegistry().findSession(appName, instance);
     if (sess) {
         return sess->call_app_process(input);
     }
@@ -291,6 +292,9 @@ static void processToolCalls(ChatApp* app,
             try {
                 auto args = boost::json::parse(tc.function_arguments);
                 std::string appName = args.as_object()["app"].as_string().c_str();
+                int instance = 0;
+                if (args.as_object().contains("instance"))
+                    instance = args.as_object()["instance"].as_int64();
                 int value = -1;
                 if (args.as_object().contains("coord")) {
                     auto& coord = args.as_object()["coord"].as_array();
@@ -307,8 +311,7 @@ static void processToolCalls(ChatApp* app,
                 std::string cmdStr = boost::json::serialize(cmd);
 
                 // 直接处理 tick 并推送状态到游戏 WebSocket 更新前端显示
-                // 不再发送 agentMsg 到 chat 前端（避免通过前端链再产生一次 tick）
-                auto sess = Config::instance().sessionRegistry().findSession(appName);
+                auto sess = Config::instance().sessionRegistry().findSession(appName, instance);
                 std::string result;
                 if (sess) {
                     result = sess->call_app_process_and_notify(cmdStr);
@@ -343,8 +346,11 @@ static void processToolCalls(ChatApp* app,
             try {
                 auto args = boost::json::parse(tc.function_arguments);
                 std::string appName = args.as_object()["app"].as_string().c_str();
+                int instance = 0;
+                if (args.as_object().contains("instance"))
+                    instance = args.as_object()["instance"].as_int64();
                 std::string state = appProcessOnApp(app, appName,
-                    "{\"action\":\"get_state\"}");
+                    "{\"action\":\"get_state\"}", instance);
                 tr["content"] = "{\"success\":true,\"state\":" + state + "}";
             } catch (std::exception& e) {
                 tr["content"] = "{\"success\":false,\"msg\":\"error: " + std::string(e.what()) + "\"}";
@@ -441,13 +447,22 @@ static void handleUserMessageAsync(ChatApp* app, const std::string& text)
     std::string stateSummary = "当前已打开的app状态:\n";
     bool anyOpen = false;
 
+    // 标记哪些 (name, idx) 已被注入（通过 app->instances 内实例会话的）
+    std::set<std::pair<std::string,int>> injected;
+
     for (auto& [name, inst] : app->instances) {
-        auto sess = registry.findSession(name);
-        if (sess) {
+        int idx = 0;
+        while (true) {
+            auto sess = registry.findSession(name, idx);
+            if (!sess) break;
             std::string s = sess->call_app_process("{\"action\":\"get_state\"}");
-            stateSummary += "- " + name + " (会话): " + s + "\n";
+            stateSummary += "- " + name + " #" + std::to_string(idx) + ": " + s + "\n";
+            injected.insert({name, idx});
             anyOpen = true;
-        } else {
+            ++idx;
+        }
+        // 没有会话时回退到内部实例
+        if (idx == 0 && inst.mod) {
             char* raw = inst.mod.app_process(inst.handle.get(), "{\"action\":\"get_state\"}");
             std::string s(raw ? raw : "[]");
             if (inst.mod.app_free_string) inst.mod.app_free_string(raw);
@@ -456,14 +471,16 @@ static void handleUserMessageAsync(ChatApp* app, const std::string& text)
         }
     }
 
-    // 也注入 SessionRegistry 中存在但 app->instances 中没有的 app（用户直接打开的）
-    for (auto& name : registry.listSessions()) {
-        if (app->instances.find(name) != app->instances.end())
+    // 注入 SessionRegistry 中尚未注入的实例（用户直接打开但 agent 未 open_app 的）
+    for (auto& kv : registry.listSessions()) {
+        auto& name = kv.first;
+        int idx = kv.second;
+        if (injected.count({name, idx}))
             continue;
-        auto sess = registry.findSession(name);
+        auto sess = registry.findSession(name, idx);
         if (!sess) continue;
         std::string s = sess->call_app_process("{\"action\":\"get_state\"}");
-        stateSummary += "- " + name + " (用户已打开): " + s + "\n";
+        stateSummary += "- " + name + " #" + std::to_string(idx) + ": " + s + "\n";
         anyOpen = true;
     }
 

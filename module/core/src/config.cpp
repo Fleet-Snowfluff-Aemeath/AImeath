@@ -3,46 +3,66 @@
 #include <fstream>
 #include <iostream>
 #include <sstream>
+#include <algorithm>
 
 void SessionRegistry::registerSession(const std::string& appName, std::weak_ptr<Session> session)
 {
     std::lock_guard<std::mutex> lock(mtx_);
-    sessions_[appName] = std::move(session);
+    sessions_[appName].push_back(std::move(session));
 }
 
-std::shared_ptr<Session> SessionRegistry::findSession(const std::string& appName)
+std::shared_ptr<Session> SessionRegistry::findSession(const std::string& appName, int index)
 {
     std::lock_guard<std::mutex> lock(mtx_);
     auto it = sessions_.find(appName);
     if (it == sessions_.end())
         return nullptr;
-    auto s = it->second.lock();
-    if (!s) {
+    auto& vec = it->second;
+    // 清理过期项
+    vec.erase(std::remove_if(vec.begin(), vec.end(),
+        [](auto& w) { return w.expired(); }), vec.end());
+    if (vec.empty()) {
         sessions_.erase(it);
         return nullptr;
     }
-    return s;
+    if (index < 0 || index >= (int)vec.size())
+        return nullptr;
+    return vec[index].lock();
 }
 
-void SessionRegistry::unregisterSession(const std::string& appName)
+void SessionRegistry::unregisterSession(const std::string& appName, Session* ptr)
 {
     std::lock_guard<std::mutex> lock(mtx_);
-    sessions_.erase(appName);
+    auto it = sessions_.find(appName);
+    if (it == sessions_.end())
+        return;
+    auto& vec = it->second;
+    vec.erase(std::remove_if(vec.begin(), vec.end(),
+        [ptr](auto& w) {
+            auto s = w.lock();
+            return !s || s.get() == ptr;
+        }), vec.end());
+    if (vec.empty())
+        sessions_.erase(it);
 }
 
-std::vector<std::string> SessionRegistry::listSessions()
+std::vector<std::pair<std::string, int>> SessionRegistry::listSessions()
 {
     std::lock_guard<std::mutex> lock(mtx_);
-    std::vector<std::string> names;
+    std::vector<std::pair<std::string, int>> result;
     for (auto it = sessions_.begin(); it != sessions_.end(); ) {
-        if (it->second.expired()) {
+        auto& vec = it->second;
+        vec.erase(std::remove_if(vec.begin(), vec.end(),
+            [](auto& w) { return w.expired(); }), vec.end());
+        if (vec.empty()) {
             it = sessions_.erase(it);
         } else {
-            names.push_back(it->first);
+            for (int i = 0; i < (int)vec.size(); ++i)
+                result.emplace_back(it->first, i);
             ++it;
         }
     }
-    return names;
+    return result;
 }
 
 Config& Config::instance()
