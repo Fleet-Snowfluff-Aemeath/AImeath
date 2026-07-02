@@ -43,6 +43,7 @@ export function createFilemgrChannel() {
 
   window.addEventListener('message', (e) => {
     if (e.data?.type === 'window_closing') {
+      ch.send({ action: 'close_window', window_id: WID })
       ch.close()
     }
   })

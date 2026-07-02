@@ -240,7 +240,7 @@ function closeWindow(id) {
       }, '*')
     }
   }
-  setTimeout(() => delete windows[id], 0)
+  delete windows[id]
 }
 
 function closeTab(id, ti, silent) {
@@ -286,10 +286,12 @@ function onDocMouseUpForTab(e) {
   if (!tabDrag) return
   const { windowId, tabIndex } = tabDrag
   tabDrag = null
-  if (!tabDragMoved) { tabDragMoved = false; return }
-  tabDragMoved = false
+  if (!tabDragMoved) return
   const el = document.elementFromPoint(e.clientX, e.clientY)
-  if (!el || el.closest('.win-window') || el.closest('.win-sidebar')) return
+  if (!el || el.closest('.win-window') || el.closest('.win-sidebar')) {
+    tabDragMoved = false
+    return
+  }
   detachTab(windowId, tabIndex, e.clientX, e.clientY)
 }
 
@@ -299,10 +301,9 @@ function detachTab(id, ti, x, y) {
   if (win.tabs.length <= 1) return
 
   const tab = win.tabs[ti]
+  const newName = `${tab.name}`
   const newWid = genWindowId()
   const newSrc = iframeSrcWithWid(win.url, newWid, newName)
-  const newId = `w${winIdSeq++}`
-  const newName = `${tab.name}`
 
   const newTab = { name: newName, icon: tab.icon, src: newSrc }
   windows[newId] = {
@@ -364,7 +365,7 @@ function toggleWindow(id) {
 }
 
 function switchTab(id, ti) {
-  if (tabDragMoved) return
+  if (tabDragMoved) { tabDragMoved = false; return }
   const w = windows[id]
   if (!w || !w.tabs) return
   w.activeTab = ti

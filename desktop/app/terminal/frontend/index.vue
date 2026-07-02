@@ -98,13 +98,21 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   if (pollTimer) clearInterval(pollTimer)
-  if (ws) ws.close()
-  if (term) term.dispose()
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ action: 'close_window', window_id: WID }))
+  }
+  setTimeout(() => {
+    if (ws) ws.close()
+    if (term) term.dispose()
+  }, 50)
 })
 
 window.addEventListener('message', (e) => {
   if (e.data?.type === 'window_closing') {
-    if (ws) ws.close()
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ action: 'close_window', window_id: WID }))
+    }
+    setTimeout(() => { if (ws) ws.close() }, 50)
   }
 })
 </script>
