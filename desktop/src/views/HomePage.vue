@@ -136,6 +136,22 @@ function genWindowId() {
   return 'win_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8)
 }
 
+function nextAppIndex(appKey) {
+  let maxN = 0
+  for (const id in windows) {
+    const w = windows[id]
+    if (w.appKey === appKey) {
+      if (w.tabs) {
+        for (const tab of w.tabs) {
+          const m = tab.name.match(/-(\d+)$/)
+          if (m) maxN = Math.max(maxN, parseInt(m[1]))
+        }
+      }
+    }
+  }
+  return maxN + 1
+}
+
 function iframeSrcWithWid(url, wid) {
   const [path, qs] = (url || '').split('?')
   const base = window.location.origin + window.location.pathname.replace(/\/?$/, '')
@@ -163,11 +179,11 @@ function openApp(app, opts) {
     const w = windows[id]
     if (w.appKey === app.url) {
       if (!w.tabs) {
-        w.tabs = [{ name: `${app.name}-1`, icon: w.icon, src: w.src }]
-        w.name = `${app.name}-1`
+        const n = nextAppIndex(app.url)
+        w.tabs = [{ name: `${app.name}-${n}`, icon: w.icon, src: w.src }]
+        w.name = `${app.name}-${n}`
       }
-      const tabNum = w.tabs.length + 1
-      const tabName = opts?.tabName || `${app.name}-${tabNum}`
+      const tabName = opts?.tabName || `${app.name}-${nextAppIndex(app.url)}`
       const uniqueId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
       const params = `_t=${uniqueId}`
       const tabSrc = opts?.tabParams
@@ -184,10 +200,11 @@ function openApp(app, opts) {
 
   const id = `w${winIdSeq++}`
   const windowId = genWindowId()
-  const initialTab = { name: `${app.name}-1`, icon: app.icon, src: iframeSrcWithWid(app.url, windowId) }
+  const winName = `${app.name}-${nextAppIndex(app.url)}`
+  const initialTab = { name: winName, icon: app.icon, src: iframeSrcWithWid(app.url, windowId) }
   windows[id] = {
     appKey: app.url,
-    name: `${app.name}-1`,
+    name: winName,
     icon: app.icon,
     url: app.url,
     windowId,
@@ -281,11 +298,12 @@ function detachTab(id, ti, x, y) {
   const newWid = genWindowId()
   const newSrc = iframeSrcWithWid(win.url, newWid)
   const newId = `w${winIdSeq++}`
-  const newTab = { name: tab.name, icon: tab.icon, src: newSrc }
+  const newName = `${tab.name}`
 
+  const newTab = { name: newName, icon: tab.icon, src: newSrc }
   windows[newId] = {
     appKey: win.appKey,
-    name: tab.name,
+    name: newName,
     icon: tab.icon,
     url: win.url,
     windowId: newWid,
