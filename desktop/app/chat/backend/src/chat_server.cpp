@@ -462,10 +462,7 @@ static void handleUserMessageAsync(ChatApp* app, const std::string& text)
     // 标记哪些 (name, idx) 已被注入（通过 app->instances 内实例会话的）
     std::set<std::pair<std::string,int>> injected;
 
-    // 判断多个实例时是否显示编号（仅当同名实例数 > 1）
     auto allSessions = registry.listSessions();
-    std::map<std::string,int> sessionCount;
-    for (auto& kv : allSessions) sessionCount[kv.first]++;
 
     for (auto& [name, inst] : app->instances) {
         int idx = 0;
@@ -473,10 +470,7 @@ static void handleUserMessageAsync(ChatApp* app, const std::string& text)
             auto sess = registry.findSession(name, idx);
             if (!sess) break;
             std::string s = sess->call_app_process("{\"action\":\"get_state\"}");
-            std::string label = std::string(displayName(name));
-            if (sessionCount[name] > 1)
-                label += "-" + std::to_string(idx + 1);
-            stateSummary += "- " + label + ": " + s + "\n";
+            stateSummary += "- " + std::string(displayName(name)) + "-" + std::to_string(idx + 1) + ": " + s + "\n";
             injected.insert({name, idx});
             anyOpen = true;
             ++idx;
@@ -486,7 +480,7 @@ static void handleUserMessageAsync(ChatApp* app, const std::string& text)
             char* raw = inst.mod.app_process(inst.handle.get(), "{\"action\":\"get_state\"}");
             std::string s(raw ? raw : "[]");
             if (inst.mod.app_free_string) inst.mod.app_free_string(raw);
-            stateSummary += "- " + std::string(displayName(name)) + ": " + s + "\n";
+            stateSummary += "- " + std::string(displayName(name)) + "-1: " + s + "\n";
             anyOpen = true;
         }
     }
@@ -500,10 +494,7 @@ static void handleUserMessageAsync(ChatApp* app, const std::string& text)
         auto sess = registry.findSession(name, idx);
         if (!sess) continue;
         std::string s = sess->call_app_process("{\"action\":\"get_state\"}");
-        std::string label = std::string(displayName(name));
-        if (sessionCount[name] > 1)
-            label += "-" + std::to_string(idx + 1);
-        stateSummary += "- " + label + ": " + s + "\n";
+        stateSummary += "- " + std::string(displayName(name)) + "-" + std::to_string(idx + 1) + ": " + s + "\n";
         anyOpen = true;
     }
 

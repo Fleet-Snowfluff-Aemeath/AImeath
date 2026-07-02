@@ -144,9 +144,12 @@ function openApp(app, opts) {
   for (const id in windows) {
     const w = windows[id]
     if (w.appKey === app.url) {
-      if (!w.tabs) w.tabs = [{ name: w.name, icon: w.icon, src: w.src }]
+      if (!w.tabs) {
+        w.tabs = [{ name: `${app.name}-1`, icon: w.icon, src: w.src }]
+        w.name = `${app.name}-1`
+      }
       const tabNum = w.tabs.length + 1
-      const tabName = opts?.tabName || `${app.name} (${tabNum})`
+      const tabName = opts?.tabName || `${app.name}-${tabNum}`
       const uniqueId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
       const tabSrc = opts?.tabParams
         ? iframeSrc(app.url + opts.tabParams + '&_t=' + uniqueId)
@@ -161,10 +164,10 @@ function openApp(app, opts) {
   }
 
   const id = `w${winIdSeq++}`
-  const initialTab = { name: app.name, icon: app.icon, src: iframeSrc(app.url) }
+  const initialTab = { name: `${app.name}-1`, icon: app.icon, src: iframeSrc(app.url) }
   windows[id] = {
     appKey: app.url,
-    name: app.name,
+    name: `${app.name}-1`,
     icon: app.icon,
     url: app.url,
     src: iframeSrc(app.url),
