@@ -18,9 +18,12 @@ std::shared_ptr<Session> SessionRegistry::findSession(const std::string& appName
     if (it == sessions_.end())
         return nullptr;
     auto& vec = it->second;
-    // 清理过期项
+    // 清理过期项和已关闭的session
     vec.erase(std::remove_if(vec.begin(), vec.end(),
-        [](auto& w) { return w.expired(); }), vec.end());
+        [](auto& w) {
+            auto s = w.lock();
+            return !s || !s->is_open();
+        }), vec.end());
     if (vec.empty()) {
         sessions_.erase(it);
         return nullptr;
@@ -39,7 +42,10 @@ std::vector<std::shared_ptr<Session>> SessionRegistry::findAllSessions(const std
         return result;
     auto& vec = it->second;
     vec.erase(std::remove_if(vec.begin(), vec.end(),
-        [](auto& w) { return w.expired(); }), vec.end());
+        [](auto& w) {
+            auto s = w.lock();
+            return !s || !s->is_open();
+        }), vec.end());
     if (vec.empty()) {
         sessions_.erase(it);
         return result;
@@ -74,7 +80,10 @@ std::vector<std::pair<std::string, int>> SessionRegistry::listSessions()
     for (auto it = sessions_.begin(); it != sessions_.end(); ) {
         auto& vec = it->second;
         vec.erase(std::remove_if(vec.begin(), vec.end(),
-            [](auto& w) { return w.expired(); }), vec.end());
+            [](auto& w) {
+                auto s = w.lock();
+                return !s || !s->is_open();
+            }), vec.end());
         if (vec.empty()) {
             it = sessions_.erase(it);
         } else {
@@ -102,7 +111,18 @@ boost::json::array SessionRegistry::listActiveWindows()
 {
     std::lock_guard<std::mutex> lock(mtx_);
     boost::json::array result;
-    for (auto& [appName, vec] : sessions_) {
+    for (auto it = sessions_.begin(); it != sessions_.end(); ) {
+        auto& vec = it->second;
+        vec.erase(std::remove_if(vec.begin(), vec.end(),
+            [](auto& w) {
+                auto s = w.lock();
+                return !s || !s->is_open();
+            }), vec.end());
+        if (vec.empty()) {
+            it = sessions_.erase(it);
+            continue;
+        }
+        auto& appName = it->first;
         int idx = 0;
         for (auto& w : vec) {
             auto s = w.lock();
@@ -116,6 +136,7 @@ boost::json::array SessionRegistry::listActiveWindows()
                 entry["display_name"] = s->display_name();
             result.push_back(std::move(entry));
         }
+        ++it;
     }
     return result;
 }

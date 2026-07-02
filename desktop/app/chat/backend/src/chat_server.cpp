@@ -363,12 +363,32 @@ static void processToolCalls(ChatApp* app,
                 int instance = 0;
                 if (args.as_object().contains("instance"))
                     instance = args.as_object()["instance"].as_int64();
-                std::string state = appProcessOnApp(app, appName,
-                    "{\"action\":\"get_state\"}", instance);
-                tr["content"] = "{\"success\":true,\"state\":" + state + "}";
+                auto sess = Config::instance().sessionRegistry().findSession(appName, instance);
+                if (sess) {
+                    std::string state = sess->call_app_process("{\"action\":\"get_state\"}");
+                    tr["content"] = "{\"success\":true,\"state\":" + state + "}";
+                } else {
+                    tr["content"] = "{\"success\":false,\"msg\":\"no running instance " + std::to_string(instance) + " for " + appName + "\"}";
+                }
             } catch (std::exception& e) {
                 tr["content"] = "{\"success\":false,\"msg\":\"error: " + std::string(e.what()) + "\"}";
             }
+        } else if (tc.function_name == "list_apps") {
+            auto all = Config::instance().sessionRegistry().listSessions();
+            std::map<std::string, int> counts;
+            for (auto& [name, idx] : all)
+                counts[name] = std::max(counts[name], idx + 1);
+            boost::json::object info;
+            info["total"] = static_cast<int64_t>(all.size());
+            boost::json::array apps;
+            for (auto& [name, cnt] : counts) {
+                boost::json::object entry;
+                entry["app"] = name;
+                entry["instances"] = cnt;
+                apps.push_back(std::move(entry));
+            }
+            info["apps"] = std::move(apps);
+            tr["content"] = boost::json::serialize(info);
         } else {
             tr["content"] = "{\"success\":false,\"msg\":\"unknown tool: " + tc.function_name + "\"}";
         }
@@ -458,7 +478,7 @@ static void handleUserMessageAsync(ChatApp* app, const std::string& text)
     // 没有则查 ChatApp 内部的内置实例。
     // 额外查 SessionRegistry 中 agent 未打开的 app（用户直接点开的游戏）。
     auto& registry = Config::instance().sessionRegistry();
-    std::string stateSummary = "当前已打开的app状态:\n";
+    std::string stateSummary = "当前已打开的全部应用（以下列表为系统真实状态，请以此为准，勿枚举其他应用类型）：\n";
     bool anyOpen = false;
 
     // 标记哪些 (name, idx) 已被注入（通过 app->instances 内实例会话的）

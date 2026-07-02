@@ -35,10 +35,11 @@ static boost::json::object buildSystemMsg()
     msg["role"] = "system";
     msg["content"] =
         "You are an AI Agent assistant. You can help users by opening and controlling applications.\n"
+        "When a user asks about open apps or window count, ALWAYS call list_active_windows first to get accurate data. Do NOT guess or enumerate all possible app types.\n"
         "When a user asks you to do something, use the available tools to execute actions.\n"
         "After each tool execution, briefly explain what you did in Chinese.\n"
         "Available tools: open_app (open an application), control_app (send commands to an app), "
-        "close_app (close an application), get_app_state (query app status), "
+        "close_app (close an application), get_app_state (query app status for a specific app), "
         "chat_send (send a message to chat), file_list (list directory contents), "
         "file_read (read a file), terminal_exec (execute a terminal command), "
         "list_active_windows (list all open windows with their session IDs).\n"
@@ -141,7 +142,7 @@ boost::json::array AgentServer::buildTools()
         t["type"] = "function";
         boost::json::object f;
         f["name"] = "get_app_state";
-        f["description"] = "查询一个应用的当前状态, 如游戏分数、界面等.";
+        f["description"] = "查询一个应用的当前状态. 如果返回 success:false 则表示该应用未在运行. 先用 list_active_windows 确认哪些应用在运行再查询.";
         boost::json::object params;
         params["type"] = "object";
         boost::json::object props;
@@ -249,7 +250,7 @@ boost::json::array AgentServer::buildTools()
         t["type"] = "function";
         boost::json::object f;
         f["name"] = "list_active_windows";
-        f["description"] = "列出当前所有活跃的应用窗口及其 session 信息.";
+        f["description"] = "列出当前所有活跃的应用窗口及其 session 信息. 这是获取当前运行应用数量的唯一可靠方法. 返回包含 count 字段表示窗口总数.";
         boost::json::object params;
         params["type"] = "object";
         boost::json::object props;

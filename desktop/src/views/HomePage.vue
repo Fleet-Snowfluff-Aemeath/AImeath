@@ -223,24 +223,26 @@ function openApp(app, opts) {
 
 function closeWindow(id) {
   const win = windows[id]
-  if (win) {
-    if (win.tabs && win.tabs.length > 1) {
-      while (win.tabs.length > 1)
-        closeTab(id, 0, true)
-    }
-    const iframe = document.querySelector(`.win-window[data-wid="${id}"] iframe`)
-    if (iframe && iframe.contentWindow) {
-      iframe.contentWindow.postMessage({ type: 'window_closing' }, '*')
-    }
-    if (win.windowId) {
-      window.parent.postMessage({
-        type: 'agent_close_window',
-        window_id: win.windowId,
-        app: win.appKey,
-      }, '*')
-    }
+  if (!win || win.closing) return
+  win.closing = true
+  if (win.tabs && win.tabs.length > 1) {
+    while (win.tabs.length > 1)
+      closeTab(id, 0, true)
   }
-  delete windows[id]
+  const iframe = document.querySelector(`.win-window[data-wid="${id}"] iframe`)
+  if (iframe && iframe.contentWindow) {
+    iframe.contentWindow.postMessage({ type: 'window_closing' }, '*')
+  }
+  if (win.windowId) {
+    window.parent.postMessage({
+      type: 'agent_close_window',
+      window_id: win.windowId,
+      app: win.appKey,
+    }, '*')
+  }
+  setTimeout(() => {
+    delete windows[id]
+  }, 100)
 }
 
 function closeTab(id, ti, silent) {
@@ -306,6 +308,7 @@ function detachTab(id, ti, x, y) {
   const newSrc = iframeSrcWithWid(win.url, newWid, newName)
 
   const newTab = { name: newName, icon: tab.icon, src: newSrc }
+  const newId = `w${winIdSeq++}`
   windows[newId] = {
     appKey: win.appKey,
     name: newName,
@@ -518,15 +521,12 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  window.removeEventListener('message', onPostMessage)
-  document.removeEventListener('mousemove', onDocMouseMoveForTab)
-  document.removeEventListener('mouseup', onDocMouseUpForTab)
-})
-
-onUnmounted(() => {
   if (timer) clearInterval(timer)
+  window.removeEventListener('message', onPostMessage)
   document.removeEventListener('mousemove', onDrag)
   document.removeEventListener('mouseup', endDrag)
+  document.removeEventListener('mousemove', onDocMouseMoveForTab)
+  document.removeEventListener('mouseup', onDocMouseUpForTab)
 })
 </script>
 

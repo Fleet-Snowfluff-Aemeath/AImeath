@@ -48,6 +48,7 @@ public:
     Session(tcp::socket socket, Logger& logger,
             IModuleCache& cache, ThreadPool* fallback_pool,
             asio::io_context* io_ctx, int port);
+    ~Session();
 
     void start();
     void on_app_output(const char* json);
@@ -58,6 +59,7 @@ public:
     const std::string& window_id() const { return window_id_; }
     void set_window_id(const std::string& wid) { window_id_ = wid; }
     const std::string& display_name() const { return display_name_; }
+    bool is_open() const;
 
 private:
     void enqueue(std::string json);

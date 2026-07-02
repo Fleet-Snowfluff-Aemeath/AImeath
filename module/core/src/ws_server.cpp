@@ -20,6 +20,21 @@ Session::Session(tcp::socket socket, Logger& logger,
     logger_.info() << "[sess:" << this << "|" << session_id_ << "] new connection";
 }
 
+Session::~Session()
+{
+    if (closing_) return;
+    if (!app_name_.empty()) {
+        Config::instance().sessionRegistry().unregisterSession(app_name_, this);
+        if (!window_id_.empty())
+            Config::instance().sessionRegistry().unregisterWindow(window_id_);
+    }
+}
+
+bool Session::is_open() const
+{
+    return !closing_ && ws_ && ws_->is_open();
+}
+
 void Session::start()
 {
     do_http_read();
