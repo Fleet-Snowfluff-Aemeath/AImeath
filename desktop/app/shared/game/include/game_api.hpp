@@ -171,6 +171,15 @@ char* app_process(void* p, const char* input_json)                 \
         return _gameStrdup(_gameBuildArray(                        \
             boost::json::parse(_gameJsonOk())));                   \
     }                                                              \
+    else if (action == "get_state")                                \
+    {                                                              \
+        if (!ctx->game)                                            \
+            return _gameStrdup(_gameBuildArray(                    \
+                boost::json::parse(_gameJsonError("no game"))));  \
+        std::string state = ctx->game->getState();                 \
+        return _gameStrdup(_gameBuildArray(                        \
+            boost::json::parse(state)));                            \
+    }                                                              \
     else                                                           \
     {                                                              \
         return _gameStrdup(_gameBuildArray(                        \

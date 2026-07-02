@@ -51,6 +51,8 @@ public:
 
     void start();
     void on_app_output(const char* json);
+    std::string call_app_process(const std::string& input);
+    std::string call_app_process_and_notify(const std::string& input);
 
 private:
     void enqueue(std::string json);
@@ -81,6 +83,7 @@ private:
     asio::strand<asio::io_context::executor_type> strand_;
     int             port_;
     std::string     first_msg_;
+    std::string     app_name_;
 
     std::deque<std::string> write_queue_;
     bool writing_ = false;
