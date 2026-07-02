@@ -37,6 +37,9 @@ int main()
     ThreadPool fallback_pool(DEFAULT_FALLBACK_THREADS);
     AppModuleCache cache;
 
+    // 将 cache 地址注入 chat 模块的 config，使 agent 能通过 cache 加载其他 app
+    Config::instance().setChatCachePtr(reinterpret_cast<uintptr_t>(&cache));
+
     auto listener = std::make_shared<Listener>(io, logger, cache, &fallback_pool, port);
     listener->run();
 

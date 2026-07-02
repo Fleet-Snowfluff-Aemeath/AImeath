@@ -146,3 +146,22 @@ TEST(ChatServerTest, StressMultiRound)
 
     app_destroy(app);
 }
+
+TEST(ChatServerTest, CreateWithNullConfig)
+{
+    void* app = app_create(nullptr);
+    ASSERT_NE(app, nullptr);
+    EXPECT_EQ(app_is_done(app), 0);
+    app_destroy(app);
+}
+
+TEST(ChatServerTest, ToolCallWithoutCacheGraceful)
+{
+    void* app = app_create("{}");
+    ASSERT_NE(app, nullptr);
+    CaptureOutput capture;
+    app_set_output(app, capture_callback, &capture);
+    app_on_input(app, R"({"text":"/图片"})");
+    EXPECT_EQ(app_is_done(app), 0);
+    app_destroy(app);
+}

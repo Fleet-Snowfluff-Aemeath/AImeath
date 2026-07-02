@@ -70,6 +70,20 @@ export function useGame(gameType) {
     Object.assign(gameState, patch)
   }
 
+  function handleAgentInput(e) {
+    if (e.data?.type === 'agent_input') {
+      const { action, value } = e.data
+      if (!socket.value || gameState.gameOver) return
+      if (action === 'tick' && typeof value === 'number') {
+        socket.value.tick(value)
+      } else if (action === 'pass' && isGoGame.value) {
+        goPass()
+      } else if (action === 'resign' && isGoGame.value) {
+        goResign()
+      }
+    }
+  }
+
   function startGame() {
     if (socket.value) return
     resetState()
@@ -77,11 +91,13 @@ export function useGame(gameType) {
     socket.value = createGameSocket(gameType, size, size)
     socket.value.onState(handleState)
     window.addEventListener('keydown', handleKey)
+    window.addEventListener('message', handleAgentInput)
   }
 
   function endGame() {
     if (socket.value) { socket.value.endGame(); socket.value = null }
     window.removeEventListener('keydown', handleKey)
+    window.removeEventListener('message', handleAgentInput)
     resetState()
   }
 

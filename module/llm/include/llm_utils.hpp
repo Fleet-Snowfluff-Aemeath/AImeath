@@ -72,6 +72,21 @@ inline boost::json::array get_default_tools()
     };
     tools.push_back(std::move(t3));
 
+    boost::json::object t4;
+    t4["type"] = "function";
+    t4["function"] = {
+        {"name", "get_app_state"},
+        {"description", "获取当前已打开 app 的状态信息（棋盘、分数、游戏状态等），用于 agent 感知 app 状态后再决定控制操作."},
+        {"parameters", {
+            {"type", "object"},
+            {"properties", {
+                {"app", {{"type","string"},{"description","应用名称: snake, gomoku, pacman, go, terminal, filemanager"}}}
+            }},
+            {"required", boost::json::array{"app"}}
+        }}
+    };
+    tools.push_back(std::move(t4));
+
     return tools;
 }
 

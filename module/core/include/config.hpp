@@ -19,7 +19,11 @@ public:
     std::string gitToken() const { return getString("git_token"); }
     std::string fileRoot() const { return getString("file_root", "desktop/public/home"); }
 
+    void setChatCachePtr(uintptr_t ptr) { chat_cache_ptr_ = ptr; }
+    uintptr_t chatCachePtr() const { return chat_cache_ptr_; }
+
 private:
+    uintptr_t chat_cache_ptr_ = 0;
     Config();
     void load();
 

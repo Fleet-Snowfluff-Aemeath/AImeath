@@ -21,6 +21,7 @@
 #include "llm_client.hpp"
 #include "llm_utils.hpp"
 #include "config.hpp"
+#include "iface_mod.hpp"
 
 namespace asio  = boost::asio;
 
@@ -41,6 +42,13 @@ struct ChatApp;
 static void processNextInQueue(ChatApp* app);
 static void handleUserMessageAsync(ChatApp* app, const std::string& text);
 
+struct AppInstance
+{
+    AppModule mod;
+    AppPtr handle;
+    std::string appName;
+};
+
 struct ChatApp : std::enable_shared_from_this<ChatApp>
 {
     std::vector<boost::json::object> history;
@@ -59,6 +67,9 @@ struct ChatApp : std::enable_shared_from_this<ChatApp>
     bool done = false;
 
     std::shared_ptr<ChatApp> self_holder;
+
+    IModuleCache* mod_cache = nullptr;
+    std::map<std::string, AppInstance> instances;
 
     void push_output(boost::json::value val)
     {
@@ -206,6 +217,21 @@ static void handleUserMessageAsync(ChatApp* app, const std::string& text)
     boost::json::array msgs;
     for (const auto& m : history_copy) msgs.push_back(m);
 
+    // 注入已打开 app 的状态到 LLM 上下文，使 agent 能感知 state
+    if (!app->instances.empty()) {
+        std::string stateSummary = "当前已打开的app状态:\n";
+        for (auto& [name, inst] : app->instances) {
+            char* raw = inst.mod.app_process(inst.handle.get(), "{\"action\":\"get_state\"}");
+            std::string s(raw ? raw : "[]");
+            if (inst.mod.app_free_string) inst.mod.app_free_string(raw);
+            stateSummary += "- " + name + ": " + s + "\n";
+        }
+        boost::json::object sysMsg;
+        sysMsg["role"] = "system";
+        sysMsg["content"] = stateSummary;
+        msgs.insert(msgs.begin(), std::move(sysMsg));
+    }
+
     std::string body = llm::build_chat_body(msgs);
     doLlmCall(app, body, true, [app](std::string response, std::string reasoning, std::vector<LlmToolCall> toolCalls) {
         if (app->cancelled) return;
@@ -238,6 +264,26 @@ static void handleUserMessageAsync(ChatApp* app, const std::string& text)
                 app->history.push_back(std::move(am));
             }
 
+            auto ensureAppInstance = [app](const std::string& name) -> AppInstance* {
+                auto it = app->instances.find(name);
+                if (it != app->instances.end())
+                    return &it->second;
+                if (!app->mod_cache) return nullptr;
+                try {
+                    AppModule mod = app->mod_cache->load(name);
+                    if (!mod) return nullptr;
+                    AppPtr handle = mod.create("{}");
+                    if (!handle) return nullptr;
+                    AppInstance inst;
+                    inst.mod = mod;
+                    inst.handle = std::move(handle);
+                    inst.appName = name;
+                    auto& ref = app->instances[name];
+                    ref = std::move(inst);
+                    return &app->instances[name];
+                } catch (...) { return nullptr; }
+            };
+
             for (auto& tc : mergedList) {
                 boost::json::object tr;
                 tr["role"] = "tool";
@@ -248,6 +294,8 @@ static void handleUserMessageAsync(ChatApp* app, const std::string& text)
                     try {
                         auto args = boost::json::parse(tc.function_arguments);
                         std::string appName = args.as_object()["app"].as_string().c_str();
+                        // 预加载模块到内部状态
+                        ensureAppInstance(appName);
                         boost::json::object agentMsg;
                         agentMsg["type"] = "agent";
                         agentMsg["action"] = "open_app";
@@ -265,14 +313,33 @@ static void handleUserMessageAsync(ChatApp* app, const std::string& text)
                     try {
                         auto args = boost::json::parse(tc.function_arguments);
                         std::string appName = args.as_object()["app"].as_string().c_str();
+                        int value = args.as_object().contains("value")
+                            ? args.as_object()["value"].as_int64() : -1;
+
+                        // 仍发送前端消息 (保持 UI 同步)
                         boost::json::object agentMsg;
                         agentMsg["type"] = "agent";
                         agentMsg["action"] = "control_app";
                         agentMsg["app"] = appName;
-                        if (args.as_object().contains("value"))
-                            agentMsg["value"] = args.as_object()["value"];
+                        agentMsg["value"] = value;
                         app->push_output(std::move(agentMsg));
-                        tr["content"] = "{\"success\":true,\"msg\":\"controlled " + appName + "\"}";
+
+                        // 直接调用 app_process 获取新状态
+                        auto* inst = ensureAppInstance(appName);
+                        if (inst) {
+                            boost::json::object cmd;
+                            cmd["action"] = "tick";
+                            cmd["value"] = value;
+                            std::string cmdStr = boost::json::serialize(cmd);
+                            char* resultStr = inst->mod.app_process(
+                                inst->handle.get(), cmdStr.c_str());
+                            std::string result(resultStr ? resultStr : "[]");
+                            if (inst->mod.app_free_string)
+                                inst->mod.app_free_string(resultStr);
+                            tr["content"] = "{\"success\":true,\"result\":" + result + "}";
+                        } else {
+                            tr["content"] = "{\"success\":true}";
+                        }
                     } catch (...) {
                         tr["content"] = "{\"success\":false,\"msg\":\"failed to parse arguments\"}";
                     }
@@ -280,6 +347,8 @@ static void handleUserMessageAsync(ChatApp* app, const std::string& text)
                     try {
                         auto args = boost::json::parse(tc.function_arguments);
                         std::string appName = args.as_object()["app"].as_string().c_str();
+                        // 清理内部实例
+                        app->instances.erase(appName);
                         boost::json::object agentMsg;
                         agentMsg["type"] = "agent";
                         agentMsg["action"] = "close_app";
@@ -288,6 +357,24 @@ static void handleUserMessageAsync(ChatApp* app, const std::string& text)
                         tr["content"] = "{\"success\":true,\"msg\":\"closed " + appName + "\"}";
                     } catch (...) {
                         tr["content"] = "{\"success\":false,\"msg\":\"failed to parse arguments\"}";
+                    }
+                } else if (tc.function_name == "get_app_state") {
+                    try {
+                        auto args = boost::json::parse(tc.function_arguments);
+                        std::string appName = args.as_object()["app"].as_string().c_str();
+                        auto* inst = ensureAppInstance(appName);
+                        if (!inst) {
+                            tr["content"] = "{\"success\":false,\"msg\":\"failed to load " + appName + "\"}";
+                        } else {
+                            char* stateStr = inst->mod.app_process(
+                                inst->handle.get(), "{\"action\":\"get_state\"}");
+                            std::string state(stateStr ? stateStr : "[]");
+                            if (inst->mod.app_free_string)
+                                inst->mod.app_free_string(stateStr);
+                            tr["content"] = "{\"success\":true,\"state\":" + state + "}";
+                        }
+                    } catch (std::exception& e) {
+                        tr["content"] = "{\"success\":false,\"msg\":\"error: " + std::string(e.what()) + "\"}";
                     }
                 } else {
                     tr["content"] = "{\"success\":false,\"msg\":\"unknown tool: " + tc.function_name + "\"}";
@@ -459,6 +546,11 @@ void* app_create(const char* config_json)
     (void)config_json;
     auto ptr = std::make_shared<ChatApp>();
     ptr->self_holder = ptr;
+
+    auto cachePtr = Config::instance().chatCachePtr();
+    if (cachePtr)
+        ptr->mod_cache = reinterpret_cast<IModuleCache*>(static_cast<uintptr_t>(cachePtr));
+
     return ptr.get();
 }
 
@@ -474,6 +566,7 @@ void app_destroy(void* p)
     if (app->current_stream)
         app->current_stream->cancel();
     app->current_stream.reset();
+    app->instances.clear();
     app->self_holder.reset();
 }
 
