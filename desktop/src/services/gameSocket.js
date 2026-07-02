@@ -22,7 +22,8 @@ export function createGameSocket(game, width = 20, height = 20) {
 
   window.addEventListener('message', (e) => {
     if (e.data?.type === 'window_closing') {
-      ch.close()
+      ch.send({ action: 'close_window', window_id: WID })
+      setTimeout(() => ch.close(), 50)
     }
   })
 

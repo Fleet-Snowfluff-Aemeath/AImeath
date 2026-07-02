@@ -43,8 +43,7 @@
               :key="ti"
               class="sidebar-tab"
               :class="{ active: win.activeTab === ti }"
-              draggable="true"
-              @dragstart="onTabDragStart(id, ti, $event)"
+              @mousedown="onTabMouseDown(id, ti, $event)"
               @click="switchTab(id, ti)"
             >
               <span class="tab-icon" v-html="tab.icon"></span>
@@ -265,23 +264,30 @@ function closeTab(id, ti, silent) {
   }
 }
 
-let dragInfo = null
+let tabDrag = null
+let tabDragMoved = false
 
-function onTabDragStart(id, ti, e) {
+function onTabMouseDown(id, ti, e) {
   const win = windows[id]
-  if (!win || !win.tabs || win.tabs.length <= 1) {
-    e.preventDefault()
-    return
-  }
-  dragInfo = { windowId: id, tabIndex: ti }
-  e.dataTransfer.effectAllowed = 'move'
-  e.dataTransfer.setData('text/plain', '')
+  if (!win || !win.tabs || win.tabs.length <= 1) return
+  if (e.button !== 0) return
+  tabDrag = { windowId: id, tabIndex: ti, sx: e.clientX, sy: e.clientY }
+  tabDragMoved = false
+  e.preventDefault()
 }
 
-function onTabDragEnd(e) {
-  if (!dragInfo) return
-  const { windowId, tabIndex } = dragInfo
-  dragInfo = null
+function onDocMouseMoveForTab(e) {
+  if (!tabDrag) return
+  if (Math.abs(e.clientX - tabDrag.sx) > 3 || Math.abs(e.clientY - tabDrag.sy) > 3)
+    tabDragMoved = true
+}
+
+function onDocMouseUpForTab(e) {
+  if (!tabDrag) return
+  const { windowId, tabIndex } = tabDrag
+  tabDrag = null
+  if (!tabDragMoved) { tabDragMoved = false; return }
+  tabDragMoved = false
   const el = document.elementFromPoint(e.clientX, e.clientY)
   if (!el || el.closest('.win-window') || el.closest('.win-sidebar')) return
   detachTab(windowId, tabIndex, e.clientX, e.clientY)
@@ -358,6 +364,7 @@ function toggleWindow(id) {
 }
 
 function switchTab(id, ti) {
+  if (tabDragMoved) return
   const w = windows[id]
   if (!w || !w.tabs) return
   w.activeTab = ti
@@ -505,12 +512,14 @@ onMounted(() => {
   updateClock()
   timer = setInterval(updateClock, 1000)
   window.addEventListener('message', onPostMessage)
-  document.addEventListener('dragend', onTabDragEnd)
+  document.addEventListener('mousemove', onDocMouseMoveForTab)
+  document.addEventListener('mouseup', onDocMouseUpForTab)
 })
 
 onUnmounted(() => {
   window.removeEventListener('message', onPostMessage)
-  document.removeEventListener('dragend', onTabDragEnd)
+  document.removeEventListener('mousemove', onDocMouseMoveForTab)
+  document.removeEventListener('mouseup', onDocMouseUpForTab)
 })
 
 onUnmounted(() => {

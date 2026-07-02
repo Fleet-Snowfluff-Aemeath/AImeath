@@ -64,7 +64,10 @@ export function createChannel(url, options = {}) {
   function close() {
     intentionalClose = true
     if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null }
-    if (ws) ws.close()
+    if (ws) {
+      try { ws.close() } catch (_) {}
+      ws = null
+    }
   }
 
   return {
