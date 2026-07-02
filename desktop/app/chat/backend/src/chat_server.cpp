@@ -301,18 +301,26 @@ static void processToolCalls(ChatApp* app,
                     value = args.as_object()["value"].as_int64();
                 }
 
-                boost::json::object agentMsg;
-                agentMsg["type"] = "agent";
-                agentMsg["action"] = "control_app";
-                agentMsg["app"] = appName;
-                agentMsg["value"] = value;
-                app->push_output(std::move(agentMsg));
-
                 boost::json::object cmd;
                 cmd["action"] = "tick";
                 cmd["value"] = value;
-                std::string result = appProcessOnApp(app, appName,
-                    boost::json::serialize(cmd));
+                std::string cmdStr = boost::json::serialize(cmd);
+
+                // 直接处理 tick 并推送状态到游戏 WebSocket 更新前端显示
+                // 不再发送 agentMsg 到 chat 前端（避免通过前端链再产生一次 tick）
+                auto sess = Config::instance().sessionRegistry().findSession(appName);
+                std::string result;
+                if (sess) {
+                    result = sess->call_app_process_and_notify(cmdStr);
+                } else {
+                    auto* inst = ensureAppInstance(app, appName);
+                    if (inst) {
+                        char* raw = inst->mod.app_process(inst->handle.get(), cmdStr.c_str());
+                        result = raw ? raw : "[]";
+                        if (inst->mod.app_free_string) inst->mod.app_free_string(raw);
+                    }
+                }
+                if (result.empty()) result = "[]";
                 tr["content"] = "{\"success\":true,\"result\":" + result + "}";
             } catch (...) {
                 tr["content"] = "{\"success\":false,\"msg\":\"failed to parse arguments\"}";

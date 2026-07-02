@@ -290,6 +290,28 @@ std::string Session::call_app_process(const std::string& input)
     return result;
 }
 
+std::string Session::call_app_process_and_notify(const std::string& input)
+{
+    if (!mod_ || !app_) return "[]";
+    char* out = mod_.app_process(app_.get(), input.c_str());
+    std::string result(out ? out : "[]");
+    if (mod_.app_free_string)
+        mod_.app_free_string(out);
+
+    // 推送到游戏 WebSocket 客户端，使其显示更新
+    std::string copy = result;
+    asio::post(strand_, [self = shared_from_this(), copy = std::move(copy)]() {
+        if (self->closing_) return;
+        try {
+            auto arr = boost::json::parse(copy).as_array();
+            for (auto& item : arr)
+                self->enqueue(boost::json::serialize(item));
+        } catch (...) {}
+    });
+
+    return result;
+}
+
 void Session::close_ws()
 {
     if (ws_ && !closing_) {
