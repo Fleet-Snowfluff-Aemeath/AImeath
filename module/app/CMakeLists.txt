@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.12)
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     project(app LANGUAGES CXX)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../core ${CMAKE_BINARY_DIR}/core)
 endif()
 
 set(CMAKE_CXX_STANDARD 17)
@@ -15,14 +16,14 @@ find_package(Boost REQUIRED COMPONENTS json filesystem)
 add_library(app SHARED
     src/app_mod.cpp
 )
-target_include_directories(app PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_include_directories(app PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include ${CMAKE_CURRENT_SOURCE_DIR}/../core/include)
 target_link_libraries(app PUBLIC Boost::json Boost::filesystem dl core)
 
 # ---- Mock .so for testing ----
 add_library(mock_app MODULE
     test/mock_app.cpp
 )
-target_include_directories(mock_app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_include_directories(mock_app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include ${CMAKE_CURRENT_SOURCE_DIR}/../core/include)
 set_target_properties(mock_app PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output/lib
 )
@@ -34,7 +35,7 @@ add_executable(tests
 )
 set_target_properties(tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output/test)
 target_link_libraries(tests app GTest::GTest GTest::Main)
-target_include_directories(tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_include_directories(tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include ${CMAKE_CURRENT_SOURCE_DIR}/../core/include)
 add_dependencies(tests mock_app)
 add_custom_target(run_tests
     COMMAND ${CMAKE_COMMAND} -E env LD_LIBRARY_PATH=${CMAKE_BINARY_DIR}/output/lib $<TARGET_FILE:tests>
@@ -45,7 +46,7 @@ find_package(benchmark REQUIRED)
 add_executable(bench_app benchmark/app_bench.cpp)
 set_target_properties(bench_app PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output/bench)
 target_link_libraries(bench_app app benchmark::benchmark)
-target_include_directories(bench_app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_include_directories(bench_app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include ${CMAKE_CURRENT_SOURCE_DIR}/../core/include)
 add_dependencies(bench_app mock_app)
 add_custom_target(run_bench_app
     COMMAND ${CMAKE_COMMAND} -E env LD_LIBRARY_PATH=${CMAKE_BINARY_DIR}/output/lib $<TARGET_FILE:bench_app> --benchmark_min_time=0.1

@@ -38,7 +38,7 @@ static void BM_WsServerSessionCreate(benchmark::State& state)
         socket2.close();
 
         auto session = std::make_shared<Session>(
-            std::move(socket1), logger, cache, &fallback, &io);
+            std::move(socket1), logger, cache, &fallback, &io, 0);
         benchmark::DoNotOptimize(session);
         fallback.shutdown();
     }
