@@ -115,7 +115,7 @@ boost::json::array AgentServer::buildTools()
         t["type"] = "function";
         boost::json::object f;
         f["name"] = "close_app";
-        f["description"] = "关闭一个已打开的应用窗口.";
+        f["description"] = "关闭一个已打开的应用窗口. 可用 list_active_windows 获取 window_id 来指定关闭哪一个.";
         boost::json::object params;
         params["type"] = "object";
         boost::json::object props;
@@ -123,6 +123,10 @@ boost::json::array AgentServer::buildTools()
         appProp["type"] = "string";
         appProp["description"] = "要关闭的应用名称";
         props["app"] = appProp;
+        boost::json::object widProp;
+        widProp["type"] = "string";
+        widProp["description"] = "可选, 指定要关闭的窗口 ID (从 list_active_windows 获取). 不指定则关闭该应用最新的窗口.";
+        props["window_id"] = widProp;
         params["properties"] = props;
         boost::json::array required;
         required.push_back(boost::json::string("app"));
@@ -794,6 +798,8 @@ boost::json::value AgentServer::executeTool(const std::string& name, const boost
         agentMsg["type"] = "agent";
         agentMsg["action"] = "close_app";
         agentMsg["app"] = appName;
+        if (a.contains("window_id") && a.at("window_id").is_string())
+            agentMsg["window_id"] = a.at("window_id");
         pushOutput(std::move(agentMsg));
         result["msg"] = "closed " + appName;
     } else if (name == "get_app_state") {

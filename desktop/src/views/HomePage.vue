@@ -405,6 +405,15 @@ function onPostMessage(e) {
   }
   if (e.data?.type === 'agent_close_app') {
     const appName = e.data.app
+    const targetWid = e.data.window_id
+    if (targetWid) {
+      for (const id in windows) {
+        if (windows[id].windowId === targetWid) {
+          closeWindow(id)
+          return
+        }
+      }
+    }
     for (const id in windows) {
       if (windows[id].appKey === `/${appName}`) {
         const win = windows[id]
