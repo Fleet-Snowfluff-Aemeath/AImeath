@@ -11,6 +11,7 @@ import 'xterm/css/xterm.css'
 const WS_URL = `ws://${location.hostname}:3001`
 const BASE = 'desktop/public/home'
 const WID = new URLSearchParams(location.search).get('wid') || ''
+const DNAME = decodeURIComponent(new URLSearchParams(location.search).get('name') || '')
 
 const termContainer = ref(null)
 let term = null
@@ -28,6 +29,7 @@ function connect() {
       cmd: `cd ${BASE} && PS1='\\w # ' bash --norc`
     }
     if (WID) p.window_id = WID
+    if (DNAME) p.display_name = DNAME
     ws.send(JSON.stringify(p))
   }
 

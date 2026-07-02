@@ -173,6 +173,10 @@ void Session::route_and_setup()
             if (widIt != obj.end() && widIt->value().is_string())
                 window_id_ = std::string(widIt->value().as_string());
 
+            auto dnIt = obj.find("display_name");
+            if (dnIt != obj.end() && dnIt->value().is_string())
+                display_name_ = std::string(dnIt->value().as_string());
+
             std::string s = jsonParseStr(val, key::APP);
             if (!s.empty()) {
                 app_name = std::move(s);

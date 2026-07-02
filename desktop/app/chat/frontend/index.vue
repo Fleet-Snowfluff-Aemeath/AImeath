@@ -74,6 +74,7 @@ mermaid.initialize({
 
 const WS_URL = `ws://${location.hostname}:3001/chat`
 const WID = new URLSearchParams(location.search).get('wid') || ''
+const DNAME = decodeURIComponent(new URLSearchParams(location.search).get('name') || '')
 
 const input = ref('')
 const messages = ref([])
@@ -262,6 +263,7 @@ function send() {
   if (!text || !connected.value) return
   const p = { text }
   if (WID) p.window_id = WID
+  if (DNAME) p.display_name = DNAME
   ch.send(p)
   messages.value.push({ text, isSelf: true })
   input.value = ''

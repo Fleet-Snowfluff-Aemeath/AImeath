@@ -112,6 +112,8 @@ boost::json::array SessionRegistry::listActiveWindows()
             entry["session_id"] = s->session_id();
             entry["app"] = appName;
             entry["instance"] = idx++;
+            if (!s->display_name().empty())
+                entry["display_name"] = s->display_name();
             result.push_back(std::move(entry));
         }
     }

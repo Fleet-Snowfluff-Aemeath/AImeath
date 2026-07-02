@@ -57,6 +57,7 @@ public:
     const std::string& session_id() const { return session_id_; }
     const std::string& window_id() const { return window_id_; }
     void set_window_id(const std::string& wid) { window_id_ = wid; }
+    const std::string& display_name() const { return display_name_; }
 
 private:
     void enqueue(std::string json);
@@ -91,6 +92,7 @@ private:
     std::string     app_name_;
     std::string     session_id_;
     std::string     window_id_;
+    std::string     display_name_;
 
     std::deque<std::string> write_queue_;
     bool writing_ = false;
