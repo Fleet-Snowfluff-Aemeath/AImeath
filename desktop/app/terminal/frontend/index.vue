@@ -97,9 +97,6 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ action: 'close_window', window_id: WID }))
-  }
   if (pollTimer) clearInterval(pollTimer)
   if (ws) ws.close()
   if (term) term.dispose()
@@ -107,9 +104,6 @@ onBeforeUnmount(() => {
 
 window.addEventListener('message', (e) => {
   if (e.data?.type === 'window_closing') {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ action: 'close_window', window_id: WID }))
-    }
     if (ws) ws.close()
   }
 })

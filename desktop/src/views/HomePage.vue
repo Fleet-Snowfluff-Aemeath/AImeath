@@ -241,7 +241,7 @@ function closeWindow(id) {
       }, '*')
     }
   }
-  delete windows[id]
+  setTimeout(() => delete windows[id], 0)
 }
 
 function closeTab(id, ti, silent) {
@@ -278,13 +278,12 @@ function onTabDragStart(id, ti, e) {
   e.dataTransfer.setData('text/plain', '')
 }
 
-function onDocDragOver(e) { e.preventDefault() }
-
-function onDocDrop(e) {
-  e.preventDefault()
+function onTabDragEnd(e) {
   if (!dragInfo) return
   const { windowId, tabIndex } = dragInfo
   dragInfo = null
+  const el = document.elementFromPoint(e.clientX, e.clientY)
+  if (!el || el.closest('.win-window') || el.closest('.win-sidebar')) return
   detachTab(windowId, tabIndex, e.clientX, e.clientY)
 }
 
@@ -506,14 +505,12 @@ onMounted(() => {
   updateClock()
   timer = setInterval(updateClock, 1000)
   window.addEventListener('message', onPostMessage)
-  document.addEventListener('dragover', onDocDragOver)
-  document.addEventListener('drop', onDocDrop)
+  document.addEventListener('dragend', onTabDragEnd)
 })
 
 onUnmounted(() => {
   window.removeEventListener('message', onPostMessage)
-  document.removeEventListener('dragover', onDocDragOver)
-  document.removeEventListener('drop', onDocDrop)
+  document.removeEventListener('dragend', onTabDragEnd)
 })
 
 onUnmounted(() => {
