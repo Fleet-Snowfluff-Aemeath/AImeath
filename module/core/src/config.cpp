@@ -1,7 +1,34 @@
 #include "config.hpp"
+#include "ws_server.hpp"
 #include <fstream>
 #include <iostream>
 #include <sstream>
+
+void SessionRegistry::registerSession(const std::string& appName, std::weak_ptr<Session> session)
+{
+    std::lock_guard<std::mutex> lock(mtx_);
+    sessions_[appName] = std::move(session);
+}
+
+std::shared_ptr<Session> SessionRegistry::findSession(const std::string& appName)
+{
+    std::lock_guard<std::mutex> lock(mtx_);
+    auto it = sessions_.find(appName);
+    if (it == sessions_.end())
+        return nullptr;
+    auto s = it->second.lock();
+    if (!s) {
+        sessions_.erase(it);
+        return nullptr;
+    }
+    return s;
+}
+
+void SessionRegistry::unregisterSession(const std::string& appName)
+{
+    std::lock_guard<std::mutex> lock(mtx_);
+    sessions_.erase(appName);
+}
 
 Config& Config::instance()
 {

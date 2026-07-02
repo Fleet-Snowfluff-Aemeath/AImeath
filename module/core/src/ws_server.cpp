@@ -1,4 +1,5 @@
 #include "ws_server.hpp"
+#include "config.hpp"
 
 Session::Session(tcp::socket socket, Logger& logger,
                  IModuleCache& cache, ThreadPool* fallback_pool,
@@ -172,6 +173,7 @@ void Session::route_and_setup()
     } catch (...) {}
 
     logger_.info() << "Routing to app: " << app_name;
+    app_name_ = app_name;
 
     mod_ = cache_.load(app_name);
     if (!mod_) {
@@ -185,6 +187,10 @@ void Session::route_and_setup()
         enqueue(jsonError("failed to create " + app_name + " instance"));
         close_ws();
         return;
+    }
+
+    if (app_name != appname::CHAT) {
+        Config::instance().sessionRegistry().registerSession(app_name, shared_from_this());
     }
 
     if (mod_.is_async()) {
@@ -274,10 +280,22 @@ bool Session::app_is_done() const
         && mod_.app_is_done(app_.get()) != 0;
 }
 
+std::string Session::call_app_process(const std::string& input)
+{
+    if (!mod_ || !app_) return "[]";
+    char* out = mod_.app_process(app_.get(), input.c_str());
+    std::string result(out ? out : "[]");
+    if (mod_.app_free_string)
+        mod_.app_free_string(out);
+    return result;
+}
+
 void Session::close_ws()
 {
     if (ws_ && !closing_) {
         closing_ = true;
+        if (!app_name_.empty() && app_name_ != appname::CHAT)
+            Config::instance().sessionRegistry().unregisterSession(app_name_);
         logger_.info() << "[sess:" << this << "] closing ws";
         beast::error_code ec;
         ws_->close(websocket::close_code::normal, ec);

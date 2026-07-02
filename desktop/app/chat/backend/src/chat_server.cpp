@@ -21,6 +21,7 @@
 #include "llm_client.hpp"
 #include "llm_utils.hpp"
 #include "config.hpp"
+#include "ws_server.hpp"
 #include "iface_mod.hpp"
 
 namespace asio  = boost::asio;
@@ -182,6 +183,25 @@ static void drainAndPush(ChatApp* app)
 
 // ---- App instance management ----
 
+static AppInstance* ensureAppInstance(ChatApp* app, const std::string& name);
+
+// ---- Session-backed app_process ----
+// 优先通过 SessionRegistry 查询用户在 WebSocket 上的真实游戏实例，
+// 不存在时回退到 ChatApp 内部的内置实例。
+static std::string appProcessOnApp(ChatApp* app, const std::string& appName, const std::string& input)
+{
+    auto sess = Config::instance().sessionRegistry().findSession(appName);
+    if (sess) {
+        return sess->call_app_process(input);
+    }
+    auto* inst = ensureAppInstance(app, appName);
+    if (!inst) return "[]";
+    char* raw = inst->mod.app_process(inst->handle.get(), input.c_str());
+    std::string result(raw ? raw : "[]");
+    if (inst->mod.app_free_string) inst->mod.app_free_string(raw);
+    return result;
+}
+
 static AppInstance* ensureAppInstance(ChatApp* app, const std::string& name)
 {
     auto it = app->instances.find(name);
@@ -288,21 +308,12 @@ static void processToolCalls(ChatApp* app,
                 agentMsg["value"] = value;
                 app->push_output(std::move(agentMsg));
 
-                auto* inst = ensureAppInstance(app, appName);
-                if (inst) {
-                    boost::json::object cmd;
-                    cmd["action"] = "tick";
-                    cmd["value"] = value;
-                    std::string cmdStr = boost::json::serialize(cmd);
-                    char* resultStr = inst->mod.app_process(
-                        inst->handle.get(), cmdStr.c_str());
-                    std::string result(resultStr ? resultStr : "[]");
-                    if (inst->mod.app_free_string)
-                        inst->mod.app_free_string(resultStr);
-                    tr["content"] = "{\"success\":true,\"result\":" + result + "}";
-                } else {
-                    tr["content"] = "{\"success\":true}";
-                }
+                boost::json::object cmd;
+                cmd["action"] = "tick";
+                cmd["value"] = value;
+                std::string result = appProcessOnApp(app, appName,
+                    boost::json::serialize(cmd));
+                tr["content"] = "{\"success\":true,\"result\":" + result + "}";
             } catch (...) {
                 tr["content"] = "{\"success\":false,\"msg\":\"failed to parse arguments\"}";
             }
@@ -324,17 +335,9 @@ static void processToolCalls(ChatApp* app,
             try {
                 auto args = boost::json::parse(tc.function_arguments);
                 std::string appName = args.as_object()["app"].as_string().c_str();
-                auto* inst = ensureAppInstance(app, appName);
-                if (!inst) {
-                    tr["content"] = "{\"success\":false,\"msg\":\"failed to load " + appName + "\"}";
-                } else {
-                    char* stateStr = inst->mod.app_process(
-                        inst->handle.get(), "{\"action\":\"get_state\"}");
-                    std::string state(stateStr ? stateStr : "[]");
-                    if (inst->mod.app_free_string)
-                        inst->mod.app_free_string(stateStr);
-                    tr["content"] = "{\"success\":true,\"state\":" + state + "}";
-                }
+                std::string state = appProcessOnApp(app, appName,
+                    "{\"action\":\"get_state\"}");
+                tr["content"] = "{\"success\":true,\"state\":" + state + "}";
             } catch (std::exception& e) {
                 tr["content"] = "{\"success\":false,\"msg\":\"error: " + std::string(e.what()) + "\"}";
             }
@@ -423,14 +426,28 @@ static void handleUserMessageAsync(ChatApp* app, const std::string& text)
     for (const auto& m : history_copy) msgs.push_back(m);
 
     // 注入已打开 app 的状态到 LLM 上下文，使 agent 能感知 state
-    if (!app->instances.empty()) {
-        std::string stateSummary = "当前已打开的app状态:\n";
-        for (auto& [name, inst] : app->instances) {
+    // 优先查 SessionRegistry（用户实际操作的 WebSocket 实例），
+    // 没有则查 ChatApp 内部的内置实例。
+    auto& registry = Config::instance().sessionRegistry();
+    std::string stateSummary = "当前已打开的app状态:\n";
+    bool anyOpen = false;
+
+    for (auto& [name, inst] : app->instances) {
+        auto sess = registry.findSession(name);
+        if (sess) {
+            std::string s = sess->call_app_process("{\"action\":\"get_state\"}");
+            stateSummary += "- " + name + " (会话): " + s + "\n";
+            anyOpen = true;
+        } else {
             char* raw = inst.mod.app_process(inst.handle.get(), "{\"action\":\"get_state\"}");
             std::string s(raw ? raw : "[]");
             if (inst.mod.app_free_string) inst.mod.app_free_string(raw);
-            stateSummary += "- " + name + ": " + s + "\n";
+            stateSummary += "- " + name + " (离线): " + s + "\n";
+            anyOpen = true;
         }
+    }
+
+    if (anyOpen) {
         boost::json::object sysMsg;
         sysMsg["role"] = "system";
         sysMsg["content"] = stateSummary;

@@ -1,8 +1,25 @@
 #pragma once
 
 #include <string>
+#include <map>
+#include <memory>
+#include <mutex>
 #include <boost/json.hpp>
 #include <boost/noncopyable.hpp>
+
+class Session;
+
+class SessionRegistry : private boost::noncopyable
+{
+public:
+    void registerSession(const std::string& appName, std::weak_ptr<Session> session);
+    std::shared_ptr<Session> findSession(const std::string& appName);
+    void unregisterSession(const std::string& appName);
+
+private:
+    std::mutex mtx_;
+    std::map<std::string, std::weak_ptr<Session>> sessions_;
+};
 
 class Config : private boost::noncopyable
 {
@@ -22,8 +39,11 @@ public:
     void setChatCachePtr(uintptr_t ptr) { chat_cache_ptr_ = ptr; }
     uintptr_t chatCachePtr() const { return chat_cache_ptr_; }
 
+    SessionRegistry& sessionRegistry() { return session_registry_; }
+
 private:
     uintptr_t chat_cache_ptr_ = 0;
+    SessionRegistry session_registry_;
     Config();
     void load();
 
