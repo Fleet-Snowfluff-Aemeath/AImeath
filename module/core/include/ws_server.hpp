@@ -54,6 +54,10 @@ public:
     std::string call_app_process(const std::string& input);
     std::string call_app_process_and_notify(const std::string& input);
 
+    const std::string& session_id() const { return session_id_; }
+    const std::string& window_id() const { return window_id_; }
+    void set_window_id(const std::string& wid) { window_id_ = wid; }
+
 private:
     void enqueue(std::string json);
     void do_write();
@@ -68,6 +72,7 @@ private:
     void process_legacy(const std::string& msg);
     bool app_is_done() const;
     void close_ws();
+    void do_cleanup();
 
     std::optional<beast::tcp_stream>                          stream_;
     std::optional<websocket::stream<beast::tcp_stream>>       ws_;
@@ -84,6 +89,8 @@ private:
     int             port_;
     std::string     first_msg_;
     std::string     app_name_;
+    std::string     session_id_;
+    std::string     window_id_;
 
     std::deque<std::string> write_queue_;
     bool writing_ = false;

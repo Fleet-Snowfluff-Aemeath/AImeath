@@ -15,6 +15,7 @@ find_package(Boost REQUIRED COMPONENTS json filesystem)
 
 add_library(app SHARED
     src/app_mod.cpp
+    src/app_manager.cpp
 )
 target_include_directories(app PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include ${CMAKE_CURRENT_SOURCE_DIR}/../core/include)
 target_link_libraries(app PUBLIC Boost::json Boost::filesystem dl core)

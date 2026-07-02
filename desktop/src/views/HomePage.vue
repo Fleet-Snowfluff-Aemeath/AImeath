@@ -122,6 +122,19 @@ const windows = reactive({})
 let winIdSeq = 1
 let zSeq = 1
 
+function genWindowId() {
+  return 'win_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8)
+}
+
+function iframeSrcWithWid(url, wid) {
+  const [path, qs] = (url || '').split('?')
+  const base = window.location.origin + window.location.pathname.replace(/\/?$/, '')
+  const params = new URLSearchParams(qs || '')
+  if (wid) params.set('wid', wid)
+  const query = params.toString()
+  return `${base}/#${path}${query ? '?' + query : ''}`
+}
+
 const topZ = computed(() => {
   let max = 0
   for (const id in windows) {
@@ -129,11 +142,6 @@ const topZ = computed(() => {
   }
   return max
 })
-
-function iframeSrc(url) {
-  const base = window.location.origin + window.location.pathname.replace(/\/?$/, '')
-  return `${base}/#${url}`
-}
 
 function openApp(app, opts) {
   const silent = opts?.silent
@@ -151,9 +159,10 @@ function openApp(app, opts) {
       const tabNum = w.tabs.length + 1
       const tabName = opts?.tabName || `${app.name}-${tabNum}`
       const uniqueId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+      const params = `_t=${uniqueId}`
       const tabSrc = opts?.tabParams
-        ? iframeSrc(app.url + opts.tabParams + '&_t=' + uniqueId)
-        : iframeSrc(app.url + '?_t=' + uniqueId)
+        ? iframeSrcWithWid(app.url + opts.tabParams + '&' + params, w.windowId)
+        : iframeSrcWithWid(app.url + '?' + params, w.windowId)
       w.tabs.push({ name: tabName, icon: app.icon, src: tabSrc })
       w.activeTab = w.tabs.length - 1
       w.name = tabName
@@ -164,13 +173,15 @@ function openApp(app, opts) {
   }
 
   const id = `w${winIdSeq++}`
-  const initialTab = { name: `${app.name}-1`, icon: app.icon, src: iframeSrc(app.url) }
+  const windowId = genWindowId()
+  const initialTab = { name: `${app.name}-1`, icon: app.icon, src: iframeSrcWithWid(app.url, windowId) }
   windows[id] = {
     appKey: app.url,
     name: `${app.name}-1`,
     icon: app.icon,
     url: app.url,
-    src: iframeSrc(app.url),
+    windowId,
+    src: iframeSrcWithWid(app.url, windowId),
     x: 40 + cascade,
     y: 40 + cascade,
     w: fixed ? 560 : 820,
@@ -185,6 +196,20 @@ function openApp(app, opts) {
 }
 
 function closeWindow(id) {
+  const win = windows[id]
+  if (win) {
+    const iframe = document.querySelector(`.win-window[data-wid="${id}"] iframe`)
+    if (iframe && iframe.contentWindow) {
+      iframe.contentWindow.postMessage({ type: 'window_closing' }, '*')
+    }
+    if (win.windowId) {
+      window.parent.postMessage({
+        type: 'agent_close_window',
+        window_id: win.windowId,
+        app: win.appKey,
+      }, '*')
+    }
+  }
   delete windows[id]
 }
 

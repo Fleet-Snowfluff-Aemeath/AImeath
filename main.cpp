@@ -19,6 +19,7 @@
 #include "logger.hpp"
 #include "ws_server.hpp"
 #include "app_mod.hpp"
+#include "app_manager.hpp"
 
 namespace asio  = boost::asio;
 namespace beast = boost::beast;
@@ -36,6 +37,9 @@ int main()
 
     ThreadPool fallback_pool(DEFAULT_FALLBACK_THREADS);
     AppModuleCache cache;
+
+    // 初始化 AppManager
+    AppManager::instance().init(&cache);
 
     // 将 cache 地址注入 chat 模块的 config，使 agent 能通过 cache 加载其他 app
     Config::instance().setChatCachePtr(reinterpret_cast<uintptr_t>(&cache));
