@@ -74,6 +74,23 @@ boost::json::value AppManager::controlApp(const std::string& appName, const std:
     APPMGR_LOG("info", "control app: " << appName << " cmd: " << commandJson.substr(0, 80));
 
     auto& registry = Config::instance().sessionRegistry();
+    if (appName == appname::CHAT) {
+        auto sessions = registry.findAllSessions(appName);
+        if (sessions.empty()) {
+            APPMGR_LOG("warn", "no active session for: " << appName);
+            return boost::json::value(nullptr);
+        }
+        boost::json::array results;
+        for (auto& sess : sessions) {
+            std::string r = sess->call_app_process(commandJson);
+            try {
+                results.push_back(boost::json::parse(r));
+            } catch (...) {
+                results.push_back(boost::json::value(r));
+            }
+        }
+        return results;
+    }
     auto sess = registry.findSession(appName, 0);
     if (sess) {
         std::string result = sess->call_app_process(commandJson);

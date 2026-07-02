@@ -30,6 +30,27 @@ std::shared_ptr<Session> SessionRegistry::findSession(const std::string& appName
     return vec[index].lock();
 }
 
+std::vector<std::shared_ptr<Session>> SessionRegistry::findAllSessions(const std::string& appName)
+{
+    std::lock_guard<std::mutex> lock(mtx_);
+    std::vector<std::shared_ptr<Session>> result;
+    auto it = sessions_.find(appName);
+    if (it == sessions_.end())
+        return result;
+    auto& vec = it->second;
+    vec.erase(std::remove_if(vec.begin(), vec.end(),
+        [](auto& w) { return w.expired(); }), vec.end());
+    if (vec.empty()) {
+        sessions_.erase(it);
+        return result;
+    }
+    for (auto& w : vec) {
+        auto s = w.lock();
+        if (s) result.push_back(std::move(s));
+    }
+    return result;
+}
+
 void SessionRegistry::unregisterSession(const std::string& appName, Session* ptr)
 {
     std::lock_guard<std::mutex> lock(mtx_);
@@ -81,12 +102,18 @@ boost::json::array SessionRegistry::listActiveWindows()
 {
     std::lock_guard<std::mutex> lock(mtx_);
     boost::json::array result;
-    for (auto& [wid, info] : windowMap_) {
-        boost::json::object entry;
-        entry["window_id"] = wid;
-        entry["session_id"] = info.sessionId;
-        entry["app"] = info.appName;
-        result.push_back(std::move(entry));
+    for (auto& [appName, vec] : sessions_) {
+        int idx = 0;
+        for (auto& w : vec) {
+            auto s = w.lock();
+            if (!s) continue;
+            boost::json::object entry;
+            entry["window_id"] = s->window_id();
+            entry["session_id"] = s->session_id();
+            entry["app"] = appName;
+            entry["instance"] = idx++;
+            result.push_back(std::move(entry));
+        }
     }
     return result;
 }

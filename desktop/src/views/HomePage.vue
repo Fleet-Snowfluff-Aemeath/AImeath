@@ -1,5 +1,5 @@
 <template>
-  <div class="desktop" @contextmenu.prevent>
+  <div class="desktop" @contextmenu.prevent @dragover.prevent @drop.prevent="onTabDrop">
     <div class="desktopCont">
       <div
         v-for="app in apps"
@@ -43,6 +43,9 @@
               :key="ti"
               class="sidebar-tab"
               :class="{ active: win.activeTab === ti }"
+              draggable="true"
+              @dragstart="onTabDragStart(id, ti, $event)"
+              @dragend="onTabDragEnd"
               @click="switchTab(id, ti)"
             >
               <span class="tab-icon" v-html="tab.icon"></span>
@@ -206,9 +209,8 @@ function closeWindow(id) {
   const win = windows[id]
   if (win) {
     if (win.tabs && win.tabs.length > 1) {
-      while (win.tabs.length > 0)
+      while (win.tabs.length > 1)
         closeTab(id, 0, true)
-      return
     }
     const iframe = document.querySelector(`.win-window[data-wid="${id}"] iframe`)
     if (iframe && iframe.contentWindow) {
@@ -244,6 +246,63 @@ function closeTab(id, ti, silent) {
     win.name = active.name
     win.icon = active.icon
   }
+}
+
+let dragInfo = null
+
+function onTabDragStart(id, ti, e) {
+  const win = windows[id]
+  if (!win || !win.tabs || win.tabs.length <= 1) {
+    e.preventDefault()
+    return
+  }
+  dragInfo = { windowId: id, tabIndex: ti, startX: e.clientX, startY: e.clientY }
+  e.dataTransfer.effectAllowed = 'move'
+  e.dataTransfer.setData('text/plain', '')
+}
+
+function onTabDragEnd() {
+  dragInfo = null
+}
+
+function onTabDrop(e) {
+  if (!dragInfo) return
+  const { windowId, tabIndex } = dragInfo
+  dragInfo = null
+  detachTab(windowId, tabIndex, e.clientX, e.clientY)
+}
+
+function detachTab(id, ti, x, y) {
+  const win = windows[id]
+  if (!win || !win.tabs || ti < 0 || ti >= win.tabs.length) return
+  if (win.tabs.length <= 1) return
+
+  const tab = win.tabs[ti]
+  const newWid = genWindowId()
+  const newSrc = iframeSrcWithWid(win.url, newWid)
+  const newId = `w${winIdSeq++}`
+  const newTab = { name: tab.name, icon: tab.icon, src: newSrc }
+
+  windows[newId] = {
+    appKey: win.appKey,
+    name: tab.name,
+    icon: tab.icon,
+    url: win.url,
+    windowId: newWid,
+    src: newSrc,
+    x: Math.max(0, x - 70),
+    y: Math.max(0, y - 16),
+    w: win.w,
+    h: win.h,
+    fixed: false,
+    zIndex: ++zSeq,
+    minimized: false,
+    maximized: false,
+    tabs: [newTab],
+    activeTab: 0,
+  }
+
+  closeTab(id, ti, true)
 }
 
 function minimizeWindow(id) {
@@ -666,6 +725,14 @@ body {
 .sidebar-tab:hover {
   background: #2a2a4a;
   color: #ddd;
+}
+
+.sidebar-tab[draggable="true"] {
+  cursor: grab;
+}
+
+.sidebar-tab[draggable="true"]:active {
+  cursor: grabbing;
 }
 
 .sidebar-tab.active {
