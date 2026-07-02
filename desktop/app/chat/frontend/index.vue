@@ -1,7 +1,7 @@
 <template>
   <div class="chat-page">
     <header class="chat-header">
-      <h1>Chat 喵</h1>
+      <h1>聊天</h1>
       <span class="chat-status" :class="statusClass">{{ statusText }}</span>
     </header>
     <main class="chat-main" ref="msgBox">

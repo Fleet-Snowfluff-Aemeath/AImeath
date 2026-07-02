@@ -16,7 +16,7 @@ import ChatPage from '../index.vue'
 describe('Chat', () => {
   it('挂载显示标题', () => {
     const w = mount(ChatPage)
-    expect(w.find('h1').text()).toBe('Chat 喵')
+    expect(w.find('h1').text()).toBe('聊天')
   })
 
   it('收到 embed 消息', async () => {

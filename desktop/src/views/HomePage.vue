@@ -1,5 +1,5 @@
 <template>
-  <div class="desktop" @contextmenu.prevent @dragover.prevent @drop.prevent="onTabDrop">
+  <div class="desktop" @contextmenu.prevent>
     <div class="desktopCont">
       <div
         v-for="app in apps"
@@ -45,7 +45,6 @@
               :class="{ active: win.activeTab === ti }"
               draggable="true"
               @dragstart="onTabDragStart(id, ti, $event)"
-              @dragend="onTabDragEnd"
               @click="switchTab(id, ti)"
             >
               <span class="tab-icon" v-html="tab.icon"></span>
@@ -274,16 +273,15 @@ function onTabDragStart(id, ti, e) {
     e.preventDefault()
     return
   }
-  dragInfo = { windowId: id, tabIndex: ti, startX: e.clientX, startY: e.clientY }
+  dragInfo = { windowId: id, tabIndex: ti }
   e.dataTransfer.effectAllowed = 'move'
   e.dataTransfer.setData('text/plain', '')
 }
 
-function onTabDragEnd() {
-  dragInfo = null
-}
+function onDocDragOver(e) { e.preventDefault() }
 
-function onTabDrop(e) {
+function onDocDrop(e) {
+  e.preventDefault()
   if (!dragInfo) return
   const { windowId, tabIndex } = dragInfo
   dragInfo = null
@@ -508,10 +506,14 @@ onMounted(() => {
   updateClock()
   timer = setInterval(updateClock, 1000)
   window.addEventListener('message', onPostMessage)
+  document.addEventListener('dragover', onDocDragOver)
+  document.addEventListener('drop', onDocDrop)
 })
 
 onUnmounted(() => {
   window.removeEventListener('message', onPostMessage)
+  document.removeEventListener('dragover', onDocDragOver)
+  document.removeEventListener('drop', onDocDrop)
 })
 
 onUnmounted(() => {

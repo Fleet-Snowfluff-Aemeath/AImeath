@@ -387,14 +387,13 @@ void Session::do_cleanup()
         Config::instance().sessionRegistry().unregisterSession(app_name_, this);
         if (!window_id_.empty())
             Config::instance().sessionRegistry().unregisterWindow(window_id_);
-        if (app_name_ != appname::CHAT) {
-            boost::json::object doneState;
-            doneState["over"] = true;
-            doneState["reason"] = "session_closed";
-            doneState["session_id"] = session_id_;
-            if (!window_id_.empty()) doneState["window_id"] = window_id_;
-            Config::instance().fireAppStateNotify(app_name_, boost::json::serialize(doneState));
-        }
+        boost::json::object doneState;
+        doneState["over"] = true;
+        doneState["reason"] = "session_closed";
+        doneState["session_id"] = session_id_;
+        if (!window_id_.empty()) doneState["window_id"] = window_id_;
+        if (!display_name_.empty()) doneState["display_name"] = display_name_;
+        Config::instance().fireAppStateNotify(app_name_, boost::json::serialize(doneState));
     }
     app_.reset();
 }
