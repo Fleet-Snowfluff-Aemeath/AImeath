@@ -73,6 +73,7 @@ mermaid.initialize({
 })
 
 const WS_URL = `ws://${location.hostname}:3001/chat`
+const WID = new URLSearchParams(location.search).get('wid') || ''
 
 const input = ref('')
 const messages = ref([])
@@ -259,17 +260,28 @@ function previewImg(url) {
 function send() {
   const text = input.value.trim()
   if (!text || !connected.value) return
-  ch.send({ text })
+  const p = { text }
+  if (WID) p.window_id = WID
+  ch.send(p)
   messages.value.push({ text, isSelf: true })
   input.value = ''
   scrollBottom()
 }
 
 function stopStream() {
-  ch.send({ action: 'stop' })
+  const p = { action: 'stop' }
+  if (WID) p.window_id = WID
+  ch.send(p)
   clearStream()
   streamingIdx.value = -1
 }
+
+window.addEventListener('message', (e) => {
+  if (e.data?.type === 'window_closing') {
+    ch.send({ action: 'close_window', window_id: WID })
+    ch.close()
+  }
+})
 
 onMounted(() => { renderMermaidInChat() })
 onBeforeUnmount(() => ch.close())

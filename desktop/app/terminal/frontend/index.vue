@@ -10,6 +10,7 @@ import 'xterm/css/xterm.css'
 
 const WS_URL = `ws://${location.hostname}:3001`
 const BASE = 'desktop/public/home'
+const WID = new URLSearchParams(location.search).get('wid') || ''
 
 const termContainer = ref(null)
 let term = null
@@ -21,11 +22,13 @@ function connect() {
   ws = new WebSocket(WS_URL)
 
   ws.onopen = () => {
-    ws.send(JSON.stringify({
+    const p = {
       app: 'terminal',
       action: 'exec',
       cmd: `cd ${BASE} && PS1='\\w # ' bash --norc`
-    }))
+    }
+    if (WID) p.window_id = WID
+    ws.send(JSON.stringify(p))
   }
 
   ws.onmessage = (e) => {
@@ -92,9 +95,21 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ action: 'close_window', window_id: WID }))
+  }
   if (pollTimer) clearInterval(pollTimer)
   if (ws) ws.close()
   if (term) term.dispose()
+})
+
+window.addEventListener('message', (e) => {
+  if (e.data?.type === 'window_closing') {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ action: 'close_window', window_id: WID }))
+    }
+    if (ws) ws.close()
+  }
 })
 </script>
 

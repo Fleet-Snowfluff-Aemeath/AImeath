@@ -1,6 +1,7 @@
 import { createChannel } from '../../../src/services/channel.js'
 
 const WS_URL = `ws://${location.hostname}:3001`
+const WID = new URLSearchParams(location.search).get('wid') || ''
 
 export function createFilemgrChannel() {
   const ch = createChannel(WS_URL, { maxRetries: 5 })
@@ -23,7 +24,9 @@ export function createFilemgrChannel() {
     return new Promise((resolve, reject) => {
       if (pending) { reject(new Error('concurrent request')); return }
       pending = resolve
-      ch.send(payload)
+      const p = { ...payload }
+      if (WID) p.window_id = WID
+      ch.send(p)
       setTimeout(() => {
         if (pending) { pending = null; reject(new Error('timeout')) }
       }, 10000)
@@ -35,6 +38,13 @@ export function createFilemgrChannel() {
     if (resp.type === 'error') throw new Error(resp.msg)
     return resp.entries || []
   }
+
+  window.addEventListener('message', (e) => {
+    if (e.data?.type === 'window_closing') {
+      ch.send({ action: 'close_window', window_id: WID })
+      ch.close()
+    }
+  })
 
   return {
     listDir,

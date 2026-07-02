@@ -65,6 +65,32 @@ std::vector<std::pair<std::string, int>> SessionRegistry::listSessions()
     return result;
 }
 
+void SessionRegistry::registerWindow(const std::string& windowId, const std::string& sessionId, const std::string& appName)
+{
+    std::lock_guard<std::mutex> lock(mtx_);
+    windowMap_[windowId] = WinInfo{sessionId, appName};
+}
+
+void SessionRegistry::unregisterWindow(const std::string& windowId)
+{
+    std::lock_guard<std::mutex> lock(mtx_);
+    windowMap_.erase(windowId);
+}
+
+boost::json::array SessionRegistry::listActiveWindows()
+{
+    std::lock_guard<std::mutex> lock(mtx_);
+    boost::json::array result;
+    for (auto& [wid, info] : windowMap_) {
+        boost::json::object entry;
+        entry["window_id"] = wid;
+        entry["session_id"] = info.sessionId;
+        entry["app"] = info.appName;
+        result.push_back(std::move(entry));
+    }
+    return result;
+}
+
 Config& Config::instance()
 {
     // C++11 function-static — thread-safe per standard

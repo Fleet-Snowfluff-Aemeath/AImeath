@@ -13,6 +13,7 @@
 
 #include "agent_api.hpp"
 #include "message_queue.hpp"
+#include "app_manager.hpp"
 
 class LlmClient;
 
@@ -72,6 +73,11 @@ private:
     std::unordered_map<std::string, ToolDef> tools_;
 
     bool done_ = false;
+
+    uint64_t subHandle_ = 0;
+    void ensureSubscribed();
+    void onAppStateChange(const std::string& appName, const boost::json::value& state);
+    void injectStateIntoHistory(const std::string& appName, const boost::json::value& state);
 };
 
 } // namespace agent

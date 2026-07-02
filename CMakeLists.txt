@@ -41,3 +41,20 @@ set_target_properties(chat_tests PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output/test
 )
 add_dependencies(chat_tests chat)
+
+add_executable(app_tests module/app/test/app_test.cpp module/app/test/app_manager_test.cpp)
+target_link_libraries(app_tests app GTest::GTest GTest::Main)
+target_include_directories(app_tests PRIVATE module/app/include module/core/include)
+set_target_properties(app_tests PROPERTIES
+    BUILD_RPATH "${CMAKE_BINARY_DIR}/output/lib"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output/test
+)
+add_dependencies(app_tests mock_app)
+
+add_executable(agent_tests module/agent/test/agent_test.cpp)
+target_include_directories(agent_tests PRIVATE module/agent/include)
+target_link_libraries(agent_tests agent GTest::GTest GTest::Main)
+set_target_properties(agent_tests PROPERTIES
+    BUILD_RPATH "${CMAKE_BINARY_DIR}/output/lib"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output/test
+)

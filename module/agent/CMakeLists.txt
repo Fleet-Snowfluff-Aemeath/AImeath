@@ -25,6 +25,11 @@ if(TARGET core)
     target_include_directories(agent PRIVATE ${CMAKE_SOURCE_DIR}/module/core/include)
 endif()
 
+if(TARGET app)
+    target_link_libraries(agent PUBLIC app)
+    target_include_directories(agent PRIVATE ${CMAKE_SOURCE_DIR}/module/app/include)
+endif()
+
 if(TARGET llm)
     target_link_libraries(agent PRIVATE llm)
     target_include_directories(agent PRIVATE ${CMAKE_SOURCE_DIR}/module/llm/include)

@@ -200,23 +200,24 @@ static AppInstance* ensureAppInstance(ChatApp* app, const std::string& name);
 
 // ---- Session-backed app_process ----
 // 优先通过 SessionRegistry 查询用户在 WebSocket 上的真实游戏实例，
-// 不存在时回退到 ChatApp 内部的内置实例。
+// 不存在时说明用户已关闭该应用 → 清理内部实例并返回空。
 static std::string appProcessOnApp(ChatApp* app, const std::string& appName, const std::string& input, int instance = 0)
 {
     auto sess = Config::instance().sessionRegistry().findSession(appName, instance);
     if (sess) {
         return sess->call_app_process(input);
     }
-    auto* inst = ensureAppInstance(app, appName);
-    if (!inst) return "[]";
-    char* raw = inst->mod.app_process(inst->handle.get(), input.c_str());
-    std::string result(raw ? raw : "[]");
-    if (inst->mod.app_free_string) inst->mod.app_free_string(raw);
-    return result;
+    // session 不存在 → 用户已手动关闭窗口, 清理内部实例
+    app->instances.erase(appName);
+    return "[]";
 }
 
 static AppInstance* ensureAppInstance(ChatApp* app, const std::string& name)
 {
+    // 如果已经有活跃 session, 不需要内部实例
+    auto sess = Config::instance().sessionRegistry().findSession(name, 0);
+    if (sess) return nullptr;
+
     auto it = app->instances.find(name);
     if (it != app->instances.end())
         return &it->second;
@@ -286,6 +287,11 @@ static void processToolCalls(ChatApp* app,
             try {
                 auto args = boost::json::parse(tc.function_arguments);
                 std::string appName = args.as_object()["app"].as_string().c_str();
+                // 检查是否有活跃 session, 没有则清理旧内部实例, 再创建新的
+                auto sess = Config::instance().sessionRegistry().findSession(appName, 0);
+                if (!sess) {
+                    app->instances.erase(appName);
+                }
                 ensureAppInstance(app, appName);
                 boost::json::object agentMsg;
                 agentMsg["type"] = "agent";
@@ -328,12 +334,8 @@ static void processToolCalls(ChatApp* app,
                 if (sess) {
                     result = sess->call_app_process_and_notify(cmdStr);
                 } else {
-                    auto* inst = ensureAppInstance(app, appName);
-                    if (inst) {
-                        char* raw = inst->mod.app_process(inst->handle.get(), cmdStr.c_str());
-                        result = raw ? raw : "[]";
-                        if (inst->mod.app_free_string) inst->mod.app_free_string(raw);
-                    }
+                    // session 不存在 → 用户已关闭窗口, 清理内部实例
+                    app->instances.erase(appName);
                 }
                 if (result.empty()) result = "[]";
                 tr["content"] = "{\"success\":true,\"result\":" + result + "}";
@@ -464,6 +466,16 @@ static void handleUserMessageAsync(ChatApp* app, const std::string& text)
 
     auto allSessions = registry.listSessions();
 
+    // 清理已关闭的 session 对应的内部实例
+    for (auto it = app->instances.begin(); it != app->instances.end(); ) {
+        auto sess = registry.findSession(it->first, 0);
+        if (!sess) {
+            it = app->instances.erase(it);
+        } else {
+            ++it;
+        }
+    }
+
     for (auto& [name, inst] : app->instances) {
         int idx = 0;
         while (true) {
@@ -474,14 +486,6 @@ static void handleUserMessageAsync(ChatApp* app, const std::string& text)
             injected.insert({name, idx});
             anyOpen = true;
             ++idx;
-        }
-        // 没有会话时回退到内部实例
-        if (idx == 0 && inst.mod) {
-            char* raw = inst.mod.app_process(inst.handle.get(), "{\"action\":\"get_state\"}");
-            std::string s(raw ? raw : "[]");
-            if (inst.mod.app_free_string) inst.mod.app_free_string(raw);
-            stateSummary += "- " + std::string(displayName(name)) + "-1: " + s + "\n";
-            anyOpen = true;
         }
     }
 

@@ -19,9 +19,18 @@ public:
     void unregisterSession(const std::string& appName, Session* ptr);
     std::vector<std::pair<std::string, int>> listSessions();
 
+    void registerWindow(const std::string& windowId, const std::string& sessionId, const std::string& appName);
+    void unregisterWindow(const std::string& windowId);
+    boost::json::array listActiveWindows();
+
 private:
     std::mutex mtx_;
     std::map<std::string, std::vector<std::weak_ptr<Session>>> sessions_;
+    struct WinInfo {
+        std::string sessionId;
+        std::string appName;
+    };
+    std::map<std::string, WinInfo> windowMap_;
 };
 
 class Config : private boost::noncopyable
@@ -42,10 +51,20 @@ public:
     void setChatCachePtr(uintptr_t ptr) { chat_cache_ptr_ = ptr; }
     uintptr_t chatCachePtr() const { return chat_cache_ptr_; }
 
+    void setAppStateNotifyFn(void (*fn)(const char* app, const char* state, void* ctx), void* ctx) {
+        state_notify_fn_ = fn;
+        state_notify_ctx_ = ctx;
+    }
+    void fireAppStateNotify(const std::string& app, const std::string& state) const {
+        if (state_notify_fn_) state_notify_fn_(app.c_str(), state.c_str(), state_notify_ctx_);
+    }
+
     SessionRegistry& sessionRegistry() { return session_registry_; }
 
 private:
     uintptr_t chat_cache_ptr_ = 0;
+    void (*state_notify_fn_)(const char*, const char*, void*) = nullptr;
+    void* state_notify_ctx_ = nullptr;
     SessionRegistry session_registry_;
     Config();
     void load();

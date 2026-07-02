@@ -1,5 +1,6 @@
 #include "ws_server.hpp"
 #include "config.hpp"
+#include <chrono>
 
 Session::Session(tcp::socket socket, Logger& logger,
                  IModuleCache& cache, ThreadPool* fallback_pool,
@@ -12,7 +13,11 @@ Session::Session(tcp::socket socket, Logger& logger,
     , port_(port)
 {
     stream_.emplace(std::move(socket));
-    logger_.info() << "[sess:" << this << "] new connection";
+    static int seq = 0;
+    auto ts = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
+    session_id_ = "sess_" + std::to_string(ts) + "_" + std::to_string(++seq);
+    logger_.info() << "[sess:" << this << "|" << session_id_ << "] new connection";
 }
 
 void Session::start()
@@ -47,10 +52,10 @@ void Session::do_write()
         asio::bind_executor(strand_, [self](beast::error_code ec, std::size_t) {
             if (ec) {
                 self->logger_.warn() << "[sess:" << self.get() << "] write error: " << ec.message();
-                self->closing_ = true;
                 self->write_queue_.clear();
                 self->writing_ = false;
-                self->app_.reset();
+                if (!self->closing_)
+                    self->do_cleanup();
                 return;
             }
             self->write_queue_.pop_front();
@@ -87,6 +92,10 @@ void Session::do_ws_accept()
                 return;
             }
             self->logger_.info() << "[sess:" << self.get() << "] ws upgrade ok";
+            boost::json::object hs;
+            hs["type"] = "session";
+            hs["id"] = self->session_id_;
+            self->enqueue(boost::json::serialize(hs));
             self->buf_.clear();
             self->do_read_first_msg();
         }));
@@ -159,6 +168,11 @@ void Session::route_and_setup()
     try {
         auto val = boost::json::parse(first_msg_);
         if (val.is_object()) {
+            auto& obj = val.as_object();
+            auto widIt = obj.find("window_id");
+            if (widIt != obj.end() && widIt->value().is_string())
+                window_id_ = std::string(widIt->value().as_string());
+
             std::string s = jsonParseStr(val, key::APP);
             if (!s.empty()) {
                 app_name = std::move(s);
@@ -172,7 +186,8 @@ void Session::route_and_setup()
         }
     } catch (...) {}
 
-    logger_.info() << "Routing to app: " << app_name;
+    logger_.info() << "Routing to app: " << app_name
+                   << (window_id_.empty() ? "" : " wid:" + window_id_);
     app_name_ = app_name;
 
     mod_ = cache_.load(app_name);
@@ -191,6 +206,8 @@ void Session::route_and_setup()
 
     if (app_name != appname::CHAT) {
         Config::instance().sessionRegistry().registerSession(app_name, shared_from_this());
+        if (!window_id_.empty())
+            Config::instance().sessionRegistry().registerWindow(window_id_, session_id_, app_name);
     }
 
     if (mod_.is_async()) {
@@ -217,18 +234,39 @@ void Session::do_read()
         asio::bind_executor(strand_, [self](beast::error_code ec, std::size_t) {
             if (ec) {
                 self->logger_.warn() << "[sess:" << self.get() << "] read error: " << ec.message();
-                self->closing_ = true;
-                self->app_.reset();
+                if (!self->closing_)
+                    self->do_cleanup();
                 return;
             }
             self->on_read(ec, 0);
         }));
 }
 
+static bool isCloseWindowMsg(const std::string& msg)
+{
+    try {
+        auto val = boost::json::parse(msg);
+        if (val.is_object()) {
+            auto& obj = val.as_object();
+            auto it = obj.find("action");
+            if (it != obj.end() && it->value().is_string()
+                && it->value().as_string() == "close_window")
+                return true;
+        }
+    } catch (...) {}
+    return false;
+}
+
 void Session::on_read(beast::error_code /*ec*/, std::size_t /*n*/)
 {
     std::string msg = beast::buffers_to_string(buf_.data());
     buf_.clear();
+
+    if (isCloseWindowMsg(msg)) {
+        logger_.info() << "[sess:" << this << "] received close_window";
+        close_ws();
+        return;
+    }
 
     if (mod_.is_async()) {
         mod_.app_on_input(app_.get(), msg.c_str());
@@ -245,6 +283,12 @@ void Session::on_read(beast::error_code /*ec*/, std::size_t /*n*/)
 
 void Session::process_legacy(const std::string& msg)
 {
+    if (isCloseWindowMsg(msg)) {
+        logger_.info() << "[sess:" << this << "] legacy close_window";
+        close_ws();
+        return;
+    }
+
     auto app  = app_.get();
     auto mod  = &mod_;
     auto self = shared_from_this();
@@ -258,14 +302,32 @@ void Session::process_legacy(const std::string& msg)
                 [self, results = std::move(results)]() {
                     try {
                         auto arr = boost::json::parse(results).as_array();
-                        for (auto& item : arr)
+                        for (auto& item : arr) {
                             self->enqueue(boost::json::serialize(item));
+                            if (item.is_object() && self->app_name_ != appname::CHAT) {
+                                auto& obj = item.as_object();
+                                auto it = obj.find("data");
+                                if (it != obj.end() && it->value().is_object()) {
+                                    auto& data = it->value().as_object();
+                                    auto overIt = data.find("over");
+                                    if (overIt != data.end() && overIt->value().is_bool() && overIt->value().as_bool()) {
+                                        Config::instance().fireAppStateNotify(self->app_name_, boost::json::serialize(data));
+                                    }
+                                }
+                            }
+                        }
                     } catch (...) {}
                 });
         }
 
         asio::post(self->strand_, [self]() {
             if (self->app_is_done()) {
+                if (!self->app_name_.empty() && self->app_name_ != appname::CHAT) {
+                    boost::json::object doneState;
+                    doneState["over"] = true;
+                    doneState["reason"] = "session_closed";
+                    Config::instance().fireAppStateNotify(self->app_name_, boost::json::serialize(doneState));
+                }
                 self->close_ws();
             } else {
                 self->do_read();
@@ -312,12 +374,27 @@ std::string Session::call_app_process_and_notify(const std::string& input)
     return result;
 }
 
+void Session::do_cleanup()
+{
+    closing_ = true;
+    if (!app_name_.empty() && app_name_ != appname::CHAT) {
+        Config::instance().sessionRegistry().unregisterSession(app_name_, this);
+        if (!window_id_.empty())
+            Config::instance().sessionRegistry().unregisterWindow(window_id_);
+        boost::json::object doneState;
+        doneState["over"] = true;
+        doneState["reason"] = "session_closed";
+        doneState["session_id"] = session_id_;
+        if (!window_id_.empty()) doneState["window_id"] = window_id_;
+        Config::instance().fireAppStateNotify(app_name_, boost::json::serialize(doneState));
+    }
+    app_.reset();
+}
+
 void Session::close_ws()
 {
     if (ws_ && !closing_) {
-        closing_ = true;
-        if (!app_name_.empty() && app_name_ != appname::CHAT)
-            Config::instance().sessionRegistry().unregisterSession(app_name_, this);
+        do_cleanup();
         logger_.info() << "[sess:" << this << "] closing ws";
         beast::error_code ec;
         ws_->close(websocket::close_code::normal, ec);
