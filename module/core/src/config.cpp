@@ -30,6 +30,21 @@ void SessionRegistry::unregisterSession(const std::string& appName)
     sessions_.erase(appName);
 }
 
+std::vector<std::string> SessionRegistry::listSessions()
+{
+    std::lock_guard<std::mutex> lock(mtx_);
+    std::vector<std::string> names;
+    for (auto it = sessions_.begin(); it != sessions_.end(); ) {
+        if (it->second.expired()) {
+            it = sessions_.erase(it);
+        } else {
+            names.push_back(it->first);
+            ++it;
+        }
+    }
+    return names;
+}
+
 Config& Config::instance()
 {
     // C++11 function-static — thread-safe per standard

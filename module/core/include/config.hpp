@@ -15,6 +15,7 @@ public:
     void registerSession(const std::string& appName, std::weak_ptr<Session> session);
     std::shared_ptr<Session> findSession(const std::string& appName);
     void unregisterSession(const std::string& appName);
+    std::vector<std::string> listSessions();
 
 private:
     std::mutex mtx_;

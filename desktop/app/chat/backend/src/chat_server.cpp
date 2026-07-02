@@ -436,6 +436,7 @@ static void handleUserMessageAsync(ChatApp* app, const std::string& text)
     // 注入已打开 app 的状态到 LLM 上下文，使 agent 能感知 state
     // 优先查 SessionRegistry（用户实际操作的 WebSocket 实例），
     // 没有则查 ChatApp 内部的内置实例。
+    // 额外查 SessionRegistry 中 agent 未打开的 app（用户直接点开的游戏）。
     auto& registry = Config::instance().sessionRegistry();
     std::string stateSummary = "当前已打开的app状态:\n";
     bool anyOpen = false;
@@ -453,6 +454,17 @@ static void handleUserMessageAsync(ChatApp* app, const std::string& text)
             stateSummary += "- " + name + " (离线): " + s + "\n";
             anyOpen = true;
         }
+    }
+
+    // 也注入 SessionRegistry 中存在但 app->instances 中没有的 app（用户直接打开的）
+    for (auto& name : registry.listSessions()) {
+        if (app->instances.find(name) != app->instances.end())
+            continue;
+        auto sess = registry.findSession(name);
+        if (!sess) continue;
+        std::string s = sess->call_app_process("{\"action\":\"get_state\"}");
+        stateSummary += "- " + name + " (用户已打开): " + s + "\n";
+        anyOpen = true;
     }
 
     if (anyOpen) {
