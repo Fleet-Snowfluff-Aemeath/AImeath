@@ -274,6 +274,11 @@ static void handleUserMessageAsync(ChatApp* app, const std::string& text)
                     if (!mod) return nullptr;
                     AppPtr handle = mod.create("{}");
                     if (!handle) return nullptr;
+                    // 自动启动游戏/应用，使内部实例有状态可查
+                    char* initResult = mod.app_process(handle.get(),
+                        R"({"action":"new_game","width":20,"height":20})");
+                    if (mod.app_free_string)
+                        mod.app_free_string(initResult);
                     AppInstance inst;
                     inst.mod = mod;
                     inst.handle = std::move(handle);
