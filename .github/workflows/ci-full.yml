@@ -103,14 +103,29 @@ jobs:
       - name: terminal/backend
         run: cd desktop/app/terminal/backend && bash test_build.sh || true
 
+      - name: C++ cmake build (full)
+        run: |
+          mkdir -p build && cd build
+          cmake .. -DCMAKE_BUILD_TYPE=Release
+          make -j$(nproc)
+
+      - name: Start server
+        run: |
+          echo '{"port":3099,"fileRoot":"/tmp"}' > config.json
+          LD_LIBRARY_PATH=build/output/lib:${BOOST_ROOT}/lib ./build/output/AImeath &
+          for i in $(seq 1 30); do
+            nc -z localhost 3099 && break
+            sleep 1
+          done
+
+      - name: Install test deps
+        run: cd test && npm ci
+
+      - name: Integration ws_smoke
+        run: cd test && node ws_smoke.js --port=3099
+
       - name: Frontend npm install
         run: cd desktop && npm ci --ignore-scripts
 
       - name: Frontend vitest
         run: cd desktop && npx vitest run
-
-      - name: Install test dependencies
-        run: cd test && npm ci
-
-      - name: Integration ws_smoke
-        run: cd test && node ws_smoke.js
