@@ -96,6 +96,23 @@ jobs:
       - name: Build and test terminal/backend
         run: cd desktop/app/terminal/backend && bash test_build.sh
 
+      - name: Full project build
+        run: |
+          mkdir -p build && cd build
+          cmake .. -DCMAKE_BUILD_TYPE=Release
+          make -j$(nproc)
+
+      - name: Install test deps
+        run: cd test && npm ci
+
+      - name: Start server & integration test
+        run: |
+          echo '{"port":3099,"fileRoot":"/tmp"}' > config.json
+          LD_LIBRARY_PATH=build/output/lib:${BOOST_ROOT}/lib ./build/output/AImeath &
+          for i in $(seq 1 30); do nc -z localhost 3099 && break; sleep 1; done
+          node test/ws_smoke.js --port=3099
+          kill %1 2>/dev/null || true
+
   # ====== Frontend Tests (Vitest) ======
   frontend-tests:
     name: Frontend Tests (Vitest)
