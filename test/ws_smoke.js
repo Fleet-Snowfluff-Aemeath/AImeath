@@ -30,9 +30,10 @@ ws.on('open', () => {
 ws.on('message', (data) => {
   try {
     const msg = JSON.parse(data.toString());
-    if (msg.type === 'stream_end') {
+    // /图片 command produces embed type, no stream_end
+    if (msg.type === 'embed' || msg.type === 'stream_end') {
       received = true;
-      console.log('[smoke] stream_end received, closing');
+      console.log(`[smoke] received type=${msg.type}, closing`);
       ws.close();
     }
   } catch (_) {}
