@@ -78,7 +78,7 @@ inline boost::json::array get_default_tools()
     t4["type"] = "function";
     t4["function"] = {
         {"name", "get_app_state"},
-        {"description", "获取当前已打开 app 的状态信息（棋盘、分数、游戏状态等），用于 agent 感知 app 状态后再决定控制操作. 同名app有多个实例时, 用 instance 参数指定 (从0开始). 状态注入中 -N 后缀的数字即 instance 值."},
+        {"description", "获取一个已打开 app 的当前状态（棋盘、分数等）. 请勿枚举所有已知app类型! 先查看系统消息中'当前已打开的app状态'列表, 只查询列表中存在的 app. 如果返回 success:false 说明该 app 未在运行. 同名app有多个实例时用 instance 参数指定 (从0开始). 状态注入中 -N 后缀的数字即 instance 值."},
         {"parameters", {
             {"type", "object"},
             {"properties", {
@@ -89,6 +89,18 @@ inline boost::json::array get_default_tools()
         }}
     };
     tools.push_back(std::move(t4));
+
+    boost::json::object t5;
+    t5["type"] = "function";
+    t5["function"] = {
+        {"name", "list_apps"},
+        {"description", "列出当前所有正在运行的应用窗口和数量。返回每个app的名称和实例数及总数。这是获取运行中应用数量的最可靠方法。"},
+        {"parameters", {
+            {"type", "object"},
+            {"properties", {{"dummy", {{"type","string"},{"description","无需参数"}}}}
+        }}
+    }};
+    tools.push_back(std::move(t5));
 
     return tools;
 }

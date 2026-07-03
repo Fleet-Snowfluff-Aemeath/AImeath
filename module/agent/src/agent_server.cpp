@@ -35,10 +35,11 @@ static boost::json::object buildSystemMsg()
     msg["role"] = "system";
     msg["content"] =
         "You are an AI Agent assistant. You can help users by opening and controlling applications.\n"
+        "When a user asks about open apps or window count, ALWAYS call list_active_windows first to get accurate data. Do NOT guess or enumerate all possible app types.\n"
         "When a user asks you to do something, use the available tools to execute actions.\n"
         "After each tool execution, briefly explain what you did in Chinese.\n"
         "Available tools: open_app (open an application), control_app (send commands to an app), "
-        "close_app (close an application), get_app_state (query app status), "
+        "close_app (close an application), get_app_state (query app status for a specific app), "
         "chat_send (send a message to chat), file_list (list directory contents), "
         "file_read (read a file), terminal_exec (execute a terminal command), "
         "list_active_windows (list all open windows with their session IDs).\n"
@@ -115,7 +116,7 @@ boost::json::array AgentServer::buildTools()
         t["type"] = "function";
         boost::json::object f;
         f["name"] = "close_app";
-        f["description"] = "关闭一个已打开的应用窗口.";
+        f["description"] = "关闭一个已打开的应用窗口. 可用 list_active_windows 获取 window_id 来指定关闭哪一个.";
         boost::json::object params;
         params["type"] = "object";
         boost::json::object props;
@@ -123,6 +124,10 @@ boost::json::array AgentServer::buildTools()
         appProp["type"] = "string";
         appProp["description"] = "要关闭的应用名称";
         props["app"] = appProp;
+        boost::json::object widProp;
+        widProp["type"] = "string";
+        widProp["description"] = "可选, 指定要关闭的窗口 ID (从 list_active_windows 获取). 不指定则关闭该应用最新的窗口.";
+        props["window_id"] = widProp;
         params["properties"] = props;
         boost::json::array required;
         required.push_back(boost::json::string("app"));
@@ -137,7 +142,7 @@ boost::json::array AgentServer::buildTools()
         t["type"] = "function";
         boost::json::object f;
         f["name"] = "get_app_state";
-        f["description"] = "查询一个应用的当前状态, 如游戏分数、界面等.";
+        f["description"] = "查询一个应用的当前状态. 如果返回 success:false 则表示该应用未在运行. 先用 list_active_windows 确认哪些应用在运行再查询.";
         boost::json::object params;
         params["type"] = "object";
         boost::json::object props;
@@ -245,7 +250,7 @@ boost::json::array AgentServer::buildTools()
         t["type"] = "function";
         boost::json::object f;
         f["name"] = "list_active_windows";
-        f["description"] = "列出当前所有活跃的应用窗口及其 session 信息.";
+        f["description"] = "列出当前所有活跃的应用窗口及其 session 信息. 这是获取当前运行应用数量的唯一可靠方法. 返回包含 count 字段表示窗口总数.";
         boost::json::object params;
         params["type"] = "object";
         boost::json::object props;
@@ -794,6 +799,8 @@ boost::json::value AgentServer::executeTool(const std::string& name, const boost
         agentMsg["type"] = "agent";
         agentMsg["action"] = "close_app";
         agentMsg["app"] = appName;
+        if (a.contains("window_id") && a.at("window_id").is_string())
+            agentMsg["window_id"] = a.at("window_id");
         pushOutput(std::move(agentMsg));
         result["msg"] = "closed " + appName;
     } else if (name == "get_app_state") {
@@ -830,7 +837,7 @@ boost::json::value AgentServer::executeTool(const std::string& name, const boost
     } else if (name == "terminal_exec") {
         std::string command = a.at("command").as_string().c_str();
         boost::json::object cmd;
-        cmd["action"] = "exec";
+        cmd["action"] = "exec_sync";
         cmd["command"] = command;
         auto r = AppManager::instance().controlApp("terminal", boost::json::serialize(cmd));
         if (!r.is_null()) result["output"] = r;

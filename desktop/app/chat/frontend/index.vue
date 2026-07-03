@@ -1,7 +1,7 @@
 <template>
   <div class="chat-page">
     <header class="chat-header">
-      <h1>Chat 喵</h1>
+      <h1>聊天</h1>
       <span class="chat-status" :class="statusClass">{{ statusText }}</span>
     </header>
     <main class="chat-main" ref="msgBox">
@@ -74,6 +74,7 @@ mermaid.initialize({
 
 const WS_URL = `ws://${location.hostname}:3001/chat`
 const WID = new URLSearchParams(location.search).get('wid') || ''
+const DNAME = decodeURIComponent(new URLSearchParams(location.search).get('name') || '')
 
 const input = ref('')
 const messages = ref([])
@@ -92,7 +93,13 @@ const msgBox = ref(null)
 
 const ch = createChannel(WS_URL, { maxRetries: -1, retryDelay: 3000, retryBackoff: 1 })
 
-ch.onOpen(() => { connected.value = true })
+ch.onOpen(() => {
+    connected.value = true
+    const p = { action: 'init' }
+    if (WID) p.window_id = WID
+    if (DNAME) p.display_name = DNAME
+    ch.send(p)
+  })
 ch.onError(() => { connected.value = false })
 ch.onClose(() => { connected.value = false; clearStream(); stopPoll() })
 
@@ -262,6 +269,7 @@ function send() {
   if (!text || !connected.value) return
   const p = { text }
   if (WID) p.window_id = WID
+  if (DNAME) p.display_name = DNAME
   ch.send(p)
   messages.value.push({ text, isSelf: true })
   input.value = ''

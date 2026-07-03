@@ -16,6 +16,7 @@ class SessionRegistry : private boost::noncopyable
 public:
     void registerSession(const std::string& appName, std::weak_ptr<Session> session);
     std::shared_ptr<Session> findSession(const std::string& appName, int index = 0);
+    std::vector<std::shared_ptr<Session>> findAllSessions(const std::string& appName);
     void unregisterSession(const std::string& appName, Session* ptr);
     std::vector<std::pair<std::string, int>> listSessions();
 

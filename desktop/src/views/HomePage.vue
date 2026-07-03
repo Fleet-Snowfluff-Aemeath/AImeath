@@ -43,10 +43,18 @@
               :key="ti"
               class="sidebar-tab"
               :class="{ active: win.activeTab === ti }"
+              @mousedown="onTabMouseDown(id, ti, $event)"
               @click="switchTab(id, ti)"
             >
               <span class="tab-icon" v-html="tab.icon"></span>
               <span class="tab-name">{{ tab.name }}</span>
+              <button
+                v-if="win.tabs.length > 1"
+                class="tab-close"
+                @mousedown.stop
+                @click.stop="closeTab(id, ti)"
+                title="关闭页签"
+              >×</button>
             </div>
           </div>
           <iframe
@@ -126,11 +134,28 @@ function genWindowId() {
   return 'win_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8)
 }
 
-function iframeSrcWithWid(url, wid) {
+function nextAppIndex(appKey) {
+  let maxN = 0
+  for (const id in windows) {
+    const w = windows[id]
+    if (w.appKey === appKey) {
+      if (w.tabs) {
+        for (const tab of w.tabs) {
+          const m = tab.name.match(/-(\d+)$/)
+          if (m) maxN = Math.max(maxN, parseInt(m[1]))
+        }
+      }
+    }
+  }
+  return maxN + 1
+}
+
+function iframeSrcWithWid(url, wid, name) {
   const [path, qs] = (url || '').split('?')
   const base = window.location.origin + window.location.pathname.replace(/\/?$/, '')
   const params = new URLSearchParams(qs || '')
   if (wid) params.set('wid', wid)
+  if (name) params.set('name', encodeURIComponent(name))
   const query = params.toString()
   return `${base}/#${path}${query ? '?' + query : ''}`
 }
@@ -153,16 +178,16 @@ function openApp(app, opts) {
     const w = windows[id]
     if (w.appKey === app.url) {
       if (!w.tabs) {
-        w.tabs = [{ name: `${app.name}-1`, icon: w.icon, src: w.src }]
-        w.name = `${app.name}-1`
+        const n = nextAppIndex(app.url)
+        w.tabs = [{ name: `${app.name}-${n}`, icon: w.icon, src: w.src }]
+        w.name = `${app.name}-${n}`
       }
-      const tabNum = w.tabs.length + 1
-      const tabName = opts?.tabName || `${app.name}-${tabNum}`
+      const tabName = opts?.tabName || `${app.name}-${nextAppIndex(app.url)}`
       const uniqueId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
       const params = `_t=${uniqueId}`
       const tabSrc = opts?.tabParams
-        ? iframeSrcWithWid(app.url + opts.tabParams + '&' + params, w.windowId)
-        : iframeSrcWithWid(app.url + '?' + params, w.windowId)
+        ? iframeSrcWithWid(app.url + opts.tabParams + '&' + params, w.windowId, tabName)
+        : iframeSrcWithWid(app.url + '?' + params, w.windowId, tabName)
       w.tabs.push({ name: tabName, icon: app.icon, src: tabSrc })
       w.activeTab = w.tabs.length - 1
       w.name = tabName
@@ -174,14 +199,15 @@ function openApp(app, opts) {
 
   const id = `w${winIdSeq++}`
   const windowId = genWindowId()
-  const initialTab = { name: `${app.name}-1`, icon: app.icon, src: iframeSrcWithWid(app.url, windowId) }
+  const winName = `${app.name}-${nextAppIndex(app.url)}`
+  const initialTab = { name: winName, icon: app.icon, src: iframeSrcWithWid(app.url, windowId, winName) }
   windows[id] = {
     appKey: app.url,
-    name: `${app.name}-1`,
+    name: winName,
     icon: app.icon,
     url: app.url,
     windowId,
-    src: iframeSrcWithWid(app.url, windowId),
+    src: iframeSrcWithWid(app.url, windowId, winName),
     x: 40 + cascade,
     y: 40 + cascade,
     w: fixed ? 560 : 820,
@@ -197,20 +223,112 @@ function openApp(app, opts) {
 
 function closeWindow(id) {
   const win = windows[id]
-  if (win) {
-    const iframe = document.querySelector(`.win-window[data-wid="${id}"] iframe`)
-    if (iframe && iframe.contentWindow) {
-      iframe.contentWindow.postMessage({ type: 'window_closing' }, '*')
-    }
-    if (win.windowId) {
-      window.parent.postMessage({
-        type: 'agent_close_window',
-        window_id: win.windowId,
-        app: win.appKey,
-      }, '*')
-    }
+  if (!win || win.closing) return
+  win.closing = true
+  if (win.tabs && win.tabs.length > 1) {
+    while (win.tabs.length > 1)
+      closeTab(id, 0, true)
   }
-  delete windows[id]
+  const iframe = document.querySelector(`.win-window[data-wid="${id}"] iframe`)
+  if (iframe && iframe.contentWindow) {
+    iframe.contentWindow.postMessage({ type: 'window_closing' }, '*')
+  }
+  if (win.windowId) {
+    window.parent.postMessage({
+      type: 'agent_close_window',
+      window_id: win.windowId,
+      app: win.appKey,
+    }, '*')
+  }
+  setTimeout(() => {
+    delete windows[id]
+  }, 100)
+}
+
+function closeTab(id, ti, silent) {
+  const win = windows[id]
+  if (!win || !win.tabs || ti < 0 || ti >= win.tabs.length) return
+  if (win.tabs.length <= 1) {
+    if (!silent) closeWindow(id)
+    return
+  }
+  const iframe = document.querySelector(`.win-window[data-wid="${id}"] iframe:nth-of-type(${ti + 1})`)
+  if (iframe && iframe.contentWindow) {
+    iframe.contentWindow.postMessage({ type: 'window_closing' }, '*')
+  }
+  win.tabs.splice(ti, 1)
+  if (win.activeTab >= win.tabs.length)
+    win.activeTab = win.tabs.length - 1
+  const active = win.tabs[win.activeTab]
+  if (active) {
+    win.name = active.name
+    win.icon = active.icon
+  }
+}
+
+let tabDrag = null
+let tabDragMoved = false
+
+function onTabMouseDown(id, ti, e) {
+  const win = windows[id]
+  if (!win || !win.tabs || win.tabs.length <= 1) return
+  if (e.button !== 0) return
+  tabDrag = { windowId: id, tabIndex: ti, sx: e.clientX, sy: e.clientY }
+  tabDragMoved = false
+  e.preventDefault()
+}
+
+function onDocMouseMoveForTab(e) {
+  if (!tabDrag) return
+  if (Math.abs(e.clientX - tabDrag.sx) > 3 || Math.abs(e.clientY - tabDrag.sy) > 3)
+    tabDragMoved = true
+}
+
+function onDocMouseUpForTab(e) {
+  if (!tabDrag) return
+  const { windowId, tabIndex } = tabDrag
+  tabDrag = null
+  if (!tabDragMoved) return
+  const el = document.elementFromPoint(e.clientX, e.clientY)
+  if (!el || el.closest('.win-window') || el.closest('.win-sidebar')) {
+    tabDragMoved = false
+    return
+  }
+  detachTab(windowId, tabIndex, e.clientX, e.clientY)
+}
+
+function detachTab(id, ti, x, y) {
+  const win = windows[id]
+  if (!win || !win.tabs || ti < 0 || ti >= win.tabs.length) return
+  if (win.tabs.length <= 1) return
+
+  const tab = win.tabs[ti]
+  const newName = `${tab.name}`
+  const newWid = genWindowId()
+  const newSrc = iframeSrcWithWid(win.url, newWid, newName)
+
+  const newTab = { name: newName, icon: tab.icon, src: newSrc }
+  const newId = `w${winIdSeq++}`
+  windows[newId] = {
+    appKey: win.appKey,
+    name: newName,
+    icon: tab.icon,
+    url: win.url,
+    windowId: newWid,
+    src: newSrc,
+    x: Math.max(0, x - 70),
+    y: Math.max(0, y - 16),
+    w: win.w,
+    h: win.h,
+    fixed: false,
+    zIndex: ++zSeq,
+    minimized: false,
+    maximized: false,
+    tabs: [newTab],
+    activeTab: 0,
+  }
+
+  closeTab(id, ti, true)
 }
 
 function minimizeWindow(id) {
@@ -250,6 +368,7 @@ function toggleWindow(id) {
 }
 
 function switchTab(id, ti) {
+  if (tabDragMoved) { tabDragMoved = false; return }
   const w = windows[id]
   if (!w || !w.tabs) return
   w.activeTab = ti
@@ -370,9 +489,23 @@ function onPostMessage(e) {
   }
   if (e.data?.type === 'agent_close_app') {
     const appName = e.data.app
+    const targetWid = e.data.window_id
+    if (targetWid) {
+      for (const id in windows) {
+        if (windows[id].windowId === targetWid) {
+          closeWindow(id)
+          return
+        }
+      }
+    }
     for (const id in windows) {
       if (windows[id].appKey === `/${appName}`) {
-        closeWindow(id)
+        const win = windows[id]
+        if (win.tabs && win.tabs.length > 1) {
+          closeTab(id, 0)
+        } else {
+          closeWindow(id)
+        }
         break
       }
     }
@@ -383,16 +516,17 @@ onMounted(() => {
   updateClock()
   timer = setInterval(updateClock, 1000)
   window.addEventListener('message', onPostMessage)
-})
-
-onUnmounted(() => {
-  window.removeEventListener('message', onPostMessage)
+  document.addEventListener('mousemove', onDocMouseMoveForTab)
+  document.addEventListener('mouseup', onDocMouseUpForTab)
 })
 
 onUnmounted(() => {
   if (timer) clearInterval(timer)
+  window.removeEventListener('message', onPostMessage)
   document.removeEventListener('mousemove', onDrag)
   document.removeEventListener('mouseup', endDrag)
+  document.removeEventListener('mousemove', onDocMouseMoveForTab)
+  document.removeEventListener('mouseup', onDocMouseUpForTab)
 })
 </script>
 
@@ -621,6 +755,14 @@ body {
   color: #ddd;
 }
 
+.sidebar-tab[draggable="true"] {
+  cursor: grab;
+}
+
+.sidebar-tab[draggable="true"]:active {
+  cursor: grabbing;
+}
+
 .sidebar-tab.active {
   background: #2d1b4e;
   color: #c4b5fd;
@@ -643,6 +785,28 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.tab-close {
+  width: 16px;
+  height: 16px;
+  border: none;
+  background: transparent;
+  color: #666;
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  margin-left: auto;
+  flex-shrink: 0;
+  line-height: 1;
+  transition: background 0.15s, color 0.15s;
+}
+.tab-close:hover {
+  background: rgba(255,255,255,0.15);
+  color: #fff;
 }
 
 /* Resize handles */

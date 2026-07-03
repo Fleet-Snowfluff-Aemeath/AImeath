@@ -11,6 +11,7 @@ import 'xterm/css/xterm.css'
 const WS_URL = `ws://${location.hostname}:3001`
 const BASE = 'desktop/public/home'
 const WID = new URLSearchParams(location.search).get('wid') || ''
+const DNAME = decodeURIComponent(new URLSearchParams(location.search).get('name') || '')
 
 const termContainer = ref(null)
 let term = null
@@ -28,6 +29,7 @@ function connect() {
       cmd: `cd ${BASE} && PS1='\\w # ' bash --norc`
     }
     if (WID) p.window_id = WID
+    if (DNAME) p.display_name = DNAME
     ws.send(JSON.stringify(p))
   }
 
@@ -95,12 +97,14 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  if (pollTimer) clearInterval(pollTimer)
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({ action: 'close_window', window_id: WID }))
   }
-  if (pollTimer) clearInterval(pollTimer)
-  if (ws) ws.close()
-  if (term) term.dispose()
+  setTimeout(() => {
+    if (ws) ws.close()
+    if (term) term.dispose()
+  }, 50)
 })
 
 window.addEventListener('message', (e) => {
@@ -108,7 +112,7 @@ window.addEventListener('message', (e) => {
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ action: 'close_window', window_id: WID }))
     }
-    if (ws) ws.close()
+    setTimeout(() => { if (ws) ws.close() }, 50)
   }
 })
 </script>

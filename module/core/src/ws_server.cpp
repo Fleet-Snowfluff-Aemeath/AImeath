@@ -20,6 +20,21 @@ Session::Session(tcp::socket socket, Logger& logger,
     logger_.info() << "[sess:" << this << "|" << session_id_ << "] new connection";
 }
 
+Session::~Session()
+{
+    if (closing_) return;
+    if (!app_name_.empty()) {
+        Config::instance().sessionRegistry().unregisterSession(app_name_, this);
+        if (!window_id_.empty())
+            Config::instance().sessionRegistry().unregisterWindow(window_id_);
+    }
+}
+
+bool Session::is_open() const
+{
+    return !closing_ && ws_ && ws_->is_open();
+}
+
 void Session::start()
 {
     do_http_read();
@@ -173,6 +188,10 @@ void Session::route_and_setup()
             if (widIt != obj.end() && widIt->value().is_string())
                 window_id_ = std::string(widIt->value().as_string());
 
+            auto dnIt = obj.find("display_name");
+            if (dnIt != obj.end() && dnIt->value().is_string())
+                display_name_ = std::string(dnIt->value().as_string());
+
             std::string s = jsonParseStr(val, key::APP);
             if (!s.empty()) {
                 app_name = std::move(s);
@@ -208,6 +227,8 @@ void Session::route_and_setup()
         Config::instance().sessionRegistry().registerSession(app_name, shared_from_this());
         if (!window_id_.empty())
             Config::instance().sessionRegistry().registerWindow(window_id_, session_id_, app_name);
+    } else {
+        Config::instance().sessionRegistry().registerSession(app_name, shared_from_this());
     }
 
     if (mod_.is_async()) {
@@ -377,7 +398,7 @@ std::string Session::call_app_process_and_notify(const std::string& input)
 void Session::do_cleanup()
 {
     closing_ = true;
-    if (!app_name_.empty() && app_name_ != appname::CHAT) {
+    if (!app_name_.empty()) {
         Config::instance().sessionRegistry().unregisterSession(app_name_, this);
         if (!window_id_.empty())
             Config::instance().sessionRegistry().unregisterWindow(window_id_);
@@ -386,6 +407,7 @@ void Session::do_cleanup()
         doneState["reason"] = "session_closed";
         doneState["session_id"] = session_id_;
         if (!window_id_.empty()) doneState["window_id"] = window_id_;
+        if (!display_name_.empty()) doneState["display_name"] = display_name_;
         Config::instance().fireAppStateNotify(app_name_, boost::json::serialize(doneState));
     }
     app_.reset();
