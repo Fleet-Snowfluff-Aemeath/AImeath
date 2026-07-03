@@ -53,12 +53,30 @@ struct TerminalState
 };
 
 // 全局 io_context（TermSession 原有模式）
+struct TerminalIoContext
+{
+    boost::asio::io_context io;
+    boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work;
+    std::thread thread;
+
+    TerminalIoContext()
+        : work(boost::asio::make_work_guard(io)),
+          thread([this] { io.run(); })
+    {}
+
+    ~TerminalIoContext()
+    {
+        work.reset();
+        io.stop();
+        if (thread.joinable())
+            thread.join();
+    }
+};
+
 static boost::asio::io_context& terminalIo()
 {
-    static boost::asio::io_context io;
-    static auto work = boost::asio::make_work_guard(io);
-    static std::thread t([] { io.run(); });
-    return io;
+    static TerminalIoContext ctx;
+    return ctx.io;
 }
 
 extern "C"

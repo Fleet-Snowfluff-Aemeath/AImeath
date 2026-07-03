@@ -94,7 +94,7 @@ jobs:
         run: cd desktop/app/filemanager/backend && bash test_build.sh
 
       - name: Build and test terminal/backend
-        run: cd desktop/app/terminal/backend && bash test_build.sh || true
+        run: cd desktop/app/terminal/backend && bash test_build.sh
 
   # ====== Frontend Tests (Vitest) ======
   frontend-tests:
