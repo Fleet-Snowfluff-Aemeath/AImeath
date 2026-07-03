@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.12)
+set(PROJ_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../../../../)
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     project(terminal LANGUAGES CXX)
+    add_subdirectory(${PROJ_ROOT}/module/core ${CMAKE_BINARY_DIR}/core)
 endif()
 
 set(CMAKE_CXX_STANDARD 17)
@@ -8,9 +10,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output/lib)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output/lib)
-
-set(PROJ_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../../../../)
-set(CORE_LIB_DIR ${PROJ_ROOT}/module/core/build/output/lib)
 
 find_package(Boost 1.91 REQUIRED COMPONENTS json)
 if(BOOST_ROOT AND NOT EXISTS "${BOOST_ROOT}")
@@ -22,9 +21,8 @@ add_library(terminal SHARED ${SRC_SOURCES})
 target_include_directories(terminal PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_include_directories(terminal PRIVATE
     ${PROJ_ROOT}/module/app/include
-    ${PROJ_ROOT}/module/core/include
 )
-target_link_libraries(terminal PRIVATE Boost::json ${CORE_LIB_DIR}/libcore.so)
+target_link_libraries(terminal PRIVATE Boost::json core)
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 find_package(GTest REQUIRED)
@@ -35,10 +33,9 @@ target_link_libraries(tests terminal GTest::GTest GTest::Main)
 target_include_directories(tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${PROJ_ROOT}/module/app/include
-    ${PROJ_ROOT}/module/core/include
 )
 add_custom_target(run_tests
-    COMMAND ${CMAKE_COMMAND} -E env "LD_LIBRARY_PATH=${CMAKE_BINARY_DIR}/output/lib:${CORE_LIB_DIR}" $<TARGET_FILE:tests>
+    COMMAND ${CMAKE_COMMAND} -E env "LD_LIBRARY_PATH=${CMAKE_BINARY_DIR}/output/lib" $<TARGET_FILE:tests>
     DEPENDS tests
 )
 
@@ -50,7 +47,6 @@ function(add_benchmark target src)
     target_include_directories(${target} PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${PROJ_ROOT}/module/app/include
-        ${PROJ_ROOT}/module/core/include
         ${Boost_INCLUDE_DIRS}
     )
 endfunction()
@@ -65,7 +61,7 @@ endforeach()
 
 set(BENCH_COMMANDS "")
 foreach(target ${BENCH_TARGETS})
-    list(APPEND BENCH_COMMANDS COMMAND ${CMAKE_COMMAND} -E env "LD_LIBRARY_PATH=${CMAKE_BINARY_DIR}/output/lib:${CORE_LIB_DIR}" $<TARGET_FILE:${target}> --benchmark_min_time=0.1)
+    list(APPEND BENCH_COMMANDS COMMAND ${CMAKE_COMMAND} -E env "LD_LIBRARY_PATH=${CMAKE_BINARY_DIR}/output/lib" $<TARGET_FILE:${target}> --benchmark_min_time=0.1)
 endforeach()
 
 add_custom_target(run_bench ${BENCH_COMMANDS} DEPENDS ${BENCH_TARGETS})

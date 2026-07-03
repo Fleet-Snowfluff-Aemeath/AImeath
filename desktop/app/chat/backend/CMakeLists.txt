@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.12)
+set(PROJ_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../../../../)
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     project(chat LANGUAGES CXX)
+    add_subdirectory(${PROJ_ROOT}/module/core ${CMAKE_BINARY_DIR}/core)
+    add_subdirectory(${PROJ_ROOT}/module/llm ${CMAKE_BINARY_DIR}/llm)
 endif()
 
 set(CMAKE_CXX_STANDARD 17)
@@ -21,13 +24,10 @@ file(GLOB SRC_SOURCES CONFIGURE_DEPENDS
 add_library(chat SHARED ${SRC_SOURCES})
 target_include_directories(chat PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_include_directories(chat PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../../../module/app/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../../../module/core/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../../../module/llm/include
+    ${PROJ_ROOT}/module/app/include
 )
-set(CORE_LIB ${CMAKE_CURRENT_SOURCE_DIR}/../../../../module/core/build/output/lib)
-set(LLM_LIB  ${CMAKE_CURRENT_SOURCE_DIR}/../../../../module/llm/build/output/lib)
-target_link_libraries(chat PRIVATE Boost::json OpenSSL::SSL OpenSSL::Crypto ${CORE_LIB}/libcore.so ${LLM_LIB}/libllm.so)
+
+target_link_libraries(chat PRIVATE Boost::json OpenSSL::SSL OpenSSL::Crypto core llm)
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 find_package(GTest REQUIRED)
@@ -39,11 +39,10 @@ set_target_properties(tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_D
 target_link_libraries(tests chat GTest::GTest GTest::Main)
 target_include_directories(tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../../../module/app/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../../../module/core/include
+    ${PROJ_ROOT}/module/app/include
 )
 add_custom_target(run_tests
-    COMMAND ${CMAKE_COMMAND} -E env LD_LIBRARY_PATH=${CMAKE_BINARY_DIR}/output/lib:${CORE_LIB}:${LLM_LIB} $<TARGET_FILE:tests>
+    COMMAND ${CMAKE_COMMAND} -E env LD_LIBRARY_PATH=${CMAKE_BINARY_DIR}/output/lib $<TARGET_FILE:tests>
     DEPENDS tests
 )
 
@@ -54,8 +53,7 @@ function(add_benchmark target src)
     target_link_libraries(${target} PRIVATE chat benchmark::benchmark)
     target_include_directories(${target} PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/include
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../../../module/app/include
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../../../module/core/include
+        ${PROJ_ROOT}/module/app/include
         ${Boost_INCLUDE_DIRS}
     )
 endfunction()
@@ -72,7 +70,7 @@ endforeach()
 
 set(BENCH_COMMANDS "")
 foreach(target ${BENCH_TARGETS})
-    list(APPEND BENCH_COMMANDS COMMAND ${CMAKE_COMMAND} -E env LD_LIBRARY_PATH=${CMAKE_BINARY_DIR}/output/lib:${CORE_LIB}:${LLM_LIB} $<TARGET_FILE:${target}> --benchmark_min_time=0.1)
+    list(APPEND BENCH_COMMANDS COMMAND ${CMAKE_COMMAND} -E env LD_LIBRARY_PATH=${CMAKE_BINARY_DIR}/output/lib $<TARGET_FILE:${target}> --benchmark_min_time=0.1)
 endforeach()
 
 add_custom_target(run_bench

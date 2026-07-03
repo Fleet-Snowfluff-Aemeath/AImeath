@@ -1,4 +1,5 @@
 cmake_minimum_required(VERSION 3.12)
+set(PROJ_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../../../../)
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     project(pacman LANGUAGES CXX)
 endif()
@@ -21,7 +22,7 @@ add_library(pacman SHARED ${SRC_SOURCES})
 target_include_directories(pacman PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_include_directories(pacman PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../../shared/game/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../../../module/app/include
+    ${PROJ_ROOT}/module/app/include
 )
 target_link_libraries(pacman PUBLIC Boost::json)
 
@@ -36,7 +37,7 @@ target_link_libraries(tests pacman GTest::GTest GTest::Main)
 target_include_directories(tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../../shared/game/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../../../module/app/include
+    ${PROJ_ROOT}/module/app/include
 )
 add_custom_target(run_tests
     COMMAND ${CMAKE_COMMAND} -E env LD_LIBRARY_PATH=${CMAKE_BINARY_DIR}/output/lib $<TARGET_FILE:tests>
@@ -51,7 +52,7 @@ function(add_benchmark target src)
     target_include_directories(${target} PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${CMAKE_CURRENT_SOURCE_DIR}/../../shared/game/include
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../../../module/app/include
+        ${PROJ_ROOT}/module/app/include
         ${Boost_INCLUDE_DIRS}
     )
 endfunction()
