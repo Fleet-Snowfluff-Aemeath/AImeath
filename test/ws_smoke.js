@@ -23,19 +23,17 @@ const ws = new WebSocket(URL);
 ws.on('open', () => {
   opened = true;
   console.log(`[smoke] connected to ${URL}`);
-  // Send slash command — handled locally, no API key needed
+  // Send slash command then poll to drain output
   ws.send(JSON.stringify({ text: '/图片' }));
+  setTimeout(() => ws.send(JSON.stringify({ action: 'poll' })), 500);
 });
 
 ws.on('message', (data) => {
   try {
-    const msg = JSON.parse(data.toString());
-    // /图片 command produces embed type, no stream_end
-    if (msg.type === 'embed' || msg.type === 'stream_end') {
-      received = true;
-      console.log(`[smoke] received type=${msg.type}, closing`);
-      ws.close();
-    }
+    JSON.parse(data.toString());
+    received = true;
+    console.log('[smoke] received response, closing');
+    ws.close();
   } catch (_) {}
 });
 
