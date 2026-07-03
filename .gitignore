@@ -1,16 +1,6 @@
 3rd
-ref
 build/
 node_modules/
 desktop/dist
-tmp/
 config.json
-SKILL.md
-notebook/
-metathink/
-result/
-compare
-workplace
-skills
-# agent
-ci_verify.sh
+private
