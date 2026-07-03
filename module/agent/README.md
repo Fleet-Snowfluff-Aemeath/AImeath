@@ -40,11 +40,17 @@ class IAgent {
 
 Agent 通过 DeepSeek function_call 使用以下工具：
 
-| 工具        | 参数                         | 描述       |
-|------------|------------------------------|-----------|
-| open_app   | app(string), width(int), height(int) | 打开应用   |
-| control_app | app(string), value(int)     | 操控应用    |
-| close_app  | app(string)                 | 关闭应用    |
+| 工具 | 参数 | 描述 |
+|---|---|---|
+| open_app | app(string), width(int), height(int) | 打开应用 |
+| control_app | app(string), value(int), coord(array) | 操控应用（方向/落子） |
+| close_app | app(string), window_id(string) | 关闭应用或指定窗口 |
+| get_app_state | app(string), instance(int) | 查询应用状态 |
+| list_active_windows | (无) | 列出所有活跃窗口及数量 |
+| chat_send | text(string) | 向聊天发送消息 |
+| file_list | path(string) | 列出目录内容 |
+| file_read | path(string) | 读取文件内容 |
+| terminal_exec | command(string) | 执行终端命令 |
 
 ## 通信协议
 

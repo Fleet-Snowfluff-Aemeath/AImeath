@@ -4,7 +4,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$PROJECT_ROOT"
 pkill -9 -f gameserver 2>/dev/null
 sleep 1
-./build/output/gameserver > /tmp/srv.log 2>&1 &
+LD_LIBRARY_PATH=build/output/lib ./build/output/gameserver > /tmp/srv.log 2>&1 &
 sleep 2
 
 echo "=== BURST ==="

@@ -13,10 +13,17 @@ describe('Gomoku 网格性能', () => {
   })
 })
 
-describe('Go 网格性能', () => {
-  const g19 = makeGrid(19, 19, ['B', 'W', '.'])
-  const cells19 = ref(g19.split('\n').filter(r => r.length > 0).join('').split(''))
-  bench('19x19 cell 样式 (361 cells)', () => {
-    for (let i = 0; i < cells19.value.length; i++) cellStyle(cells19.value[i], styles, 18)
+describe('Computed 开销', () => {
+  bench('Grid 拆分 (15x15)', () => {
+    const g15 = makeGrid(15, 15, ['B', 'W', '.'])
+    g15.split('\n').filter(r => r.length > 0)
+  })
+
+  bench('Winner 分支判断', () => {
+    const state = { score: 1 }
+    for (let i = 0; i < 1000; i++) {
+      if (state.score === 1) 'Black wins!'
+      else if (state.score === 2) 'White wins!'
+    }
   })
 })

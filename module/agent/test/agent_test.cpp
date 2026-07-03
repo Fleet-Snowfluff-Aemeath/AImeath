@@ -16,10 +16,17 @@ TEST(AgentServerTest, IsDoneInitiallyFalse)
     ptr->destroy();
 }
 
+TEST(AgentServerTest, IsDoneAfterStop)
+{
+    auto ptr = std::make_shared<agent::AgentServer>();
+    ptr->stop();
+    EXPECT_TRUE(ptr->isDone());
+    ptr->destroy();
+}
+
 TEST(AgentServerTest, SetOutputCallback)
 {
     auto ptr = std::make_shared<agent::AgentServer>();
-    bool called = false;
     std::string received;
 
     ptr->setOutput(
@@ -163,4 +170,63 @@ TEST(AgentServerTest, MultipleStopDoesNotCrash)
     EXPECT_NO_THROW(ptr->stop());
     EXPECT_NO_THROW(ptr->stop());
     ptr->destroy();
+}
+
+// ====== Process fallback (tests tool dispatch indirectly) ======
+
+TEST(AgentServerTest, ProcessCommandListWindows)
+{
+    auto ptr = std::make_shared<agent::AgentServer>();
+    std::string result = ptr->process(R"({"text":"/help"})");
+    EXPECT_FALSE(result.empty());
+    ptr->destroy();
+}
+
+TEST(AgentServerTest, ProcessHandlesEmbed)
+{
+    auto ptr = std::make_shared<agent::AgentServer>();
+    std::string result = ptr->process(R"({"text":"/help"})");
+    EXPECT_FALSE(result.empty());
+    auto val = boost::json::parse(result);
+    EXPECT_TRUE(val.is_array());
+    ptr->destroy();
+}
+
+// ====== C ABI ======
+
+extern "C" {
+    void* app_create(const char* config);
+    void  app_destroy(void* p);
+    void  app_set_output(void* p, app_output_fn cb, void* udata);
+    int   app_is_done(void* p);
+    void  app_on_input(void* p, const char* json);
+    char* app_process(void* p, const char* json);
+    void  app_free_string(char* s);
+}
+
+TEST(AgentServerTest, CApiCreateDestroy)
+{
+    void* app = app_create(nullptr);
+    ASSERT_NE(app, nullptr);
+    EXPECT_EQ(app_is_done(app), 0);
+    app_destroy(app);
+}
+
+TEST(AgentServerTest, CApiProcess)
+{
+    void* app = app_create(nullptr);
+    char* s = app_process(app, R"({"text":"hello"})");
+    ASSERT_NE(s, nullptr);
+    std::string result(s);
+    EXPECT_FALSE(result.empty());
+    app_free_string(s);
+    app_destroy(app);
+}
+
+TEST(AgentServerTest, CApiOnInputStop)
+{
+    void* app = app_create(nullptr);
+    app_on_input(app, R"({"action":"stop"})");
+    EXPECT_EQ(app_is_done(app), 1);
+    app_destroy(app);
 }

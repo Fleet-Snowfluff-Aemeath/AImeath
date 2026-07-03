@@ -1,12 +1,13 @@
 {
   "name": "test",
   "version": "1.0.0",
-  "description": "",
+  "description": "AImeath chat integration stress tests",
   "main": "chat_stress.js",
   "scripts": {
-    "test": "bash run_tests.sh",
-    "test:config": "node test_config.js",
-    "test:connect": "node test_connect.js"
+    "test": "bash run_all.sh",
+    "burst": "node chat_burst.js",
+    "concurrent": "node chat_concurrent.js",
+    "stress": "node chat_stress.js"
   },
   "keywords": [],
   "author": "",

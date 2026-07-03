@@ -33,6 +33,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 find_package(GTest REQUIRED)
 add_executable(tests
     test/app_test.cpp
+    test/app_manager_test.cpp
 )
 set_target_properties(tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output/test)
 target_link_libraries(tests app GTest::GTest GTest::Main)

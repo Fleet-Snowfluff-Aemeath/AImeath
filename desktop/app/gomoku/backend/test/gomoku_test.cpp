@@ -292,3 +292,34 @@ TEST(GomokuGameTest, BlockingWin)
     EXPECT_TRUE(game.isOver());
     EXPECT_EQ(game.score(), 1);
 }
+
+// ====== C API ======
+
+extern "C" {
+    void* app_create(const char* config_json);
+    void  app_destroy(void* p);
+    char* app_process(void* p, const char* input_json);
+    void  app_free_string(char* s);
+    int   app_is_done(void* p);
+}
+
+TEST(GomokuGameTest, CApi)
+{
+    void* app = app_create(nullptr);
+    ASSERT_NE(app, nullptr);
+    EXPECT_EQ(app_is_done(app), 0);
+
+    char* s = app_process(app, R"({"action":"new_game","width":15,"height":15})");
+    ASSERT_NE(s, nullptr);
+    std::string state(s);
+    EXPECT_NE(state.find("\"gomoku\""), std::string::npos);
+    app_free_string(s);
+
+    s = app_process(app, R"({"action":"tick","value":119})");
+    ASSERT_NE(s, nullptr);
+    state = std::string(s);
+    EXPECT_NE(state.find("\"grid\""), std::string::npos);
+    app_free_string(s);
+
+    app_destroy(app);
+}

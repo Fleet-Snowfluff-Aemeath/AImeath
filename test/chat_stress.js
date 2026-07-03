@@ -5,7 +5,7 @@
  * 用法:
  *   node test/chat_stress.js [--rounds N] [--delay-ms D] [--port P]
  *
- * 默认: 20 轮, 50ms 间隔, 端口 3001
+ * 默认: 10 轮, 50ms 间隔, 端口 3001
  */
 
 const WebSocket = require('ws');

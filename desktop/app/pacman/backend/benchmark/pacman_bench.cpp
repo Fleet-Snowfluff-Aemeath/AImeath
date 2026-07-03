@@ -39,11 +39,11 @@ BENCHMARK(BM_BoardRemoveBean);
 
 static void BM_GameTick(benchmark::State& state)
 {
-    Game game(20, 20);
+    PacmanGame game(20, 20);
     int dir = 0;
     for (auto _ : state)
     {
-        game.tick(static_cast<Direction>(dir % 4));
+        game.tick(static_cast<int>(dir % 4));
         ++dir;
     }
 }
@@ -53,9 +53,9 @@ static void BM_GameTickUntilGameOver(benchmark::State& state)
 {
     for (auto _ : state)
     {
-        Game game(10, 10);
+        PacmanGame game(10, 10);
         while (!game.isOver())
-            game.tick(Direction::RIGHT);
+            game.tick(static_cast<int>(Direction::RIGHT));
         benchmark::DoNotOptimize(game.score());
     }
 }

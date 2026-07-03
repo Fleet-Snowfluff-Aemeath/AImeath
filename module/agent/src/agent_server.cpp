@@ -975,6 +975,7 @@ bool AgentServer::closeApp(const std::string& name)
 void AgentServer::stop()
 {
     cancelled_ = true;
+    done_ = true;
     if (currentStream_) currentStream_->cancel();
     streaming_ = false;
     inputQueue_.clear();

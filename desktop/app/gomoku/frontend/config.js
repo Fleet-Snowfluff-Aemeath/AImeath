@@ -1,5 +1,5 @@
 export const info = {
-  name: '五子棋', clickGame: true,
+  name: '五子棋', size: 15, clickGame: true,
   icon: `<svg viewBox="0 0 48 48" width="36" height="36">
     <rect x="4" y="4" width="40" height="40" rx="4" fill="#1a1a2e" opacity="0.8"/>
     <rect x="8" y="8" width="32" height="32" rx="2" fill="#d97706"/>

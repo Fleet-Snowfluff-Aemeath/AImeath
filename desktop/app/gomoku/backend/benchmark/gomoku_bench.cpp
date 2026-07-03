@@ -40,7 +40,7 @@ BENCHMARK(BM_BoardIsFull);
 
 static void BM_GameTick(benchmark::State& state)
 {
-    Game game(15);
+    GomokuGame game(15);
     int pos = 0;
     for (auto _ : state)
     {
@@ -56,7 +56,7 @@ static void BM_WinDetectionHorizontal(benchmark::State& state)
 {
     for (auto _ : state)
     {
-        Game game(15);
+        GomokuGame game(15);
         int b[] = {7*15+3, 7*15+4, 7*15+5, 7*15+6, 7*15+7};
         int w[] = {0*15+0, 1*15+0, 2*15+0, 3*15+0};
         for (int i = 0; i < 4; ++i)
@@ -74,7 +74,7 @@ static void BM_WinDetectionDiagonal(benchmark::State& state)
 {
     for (auto _ : state)
     {
-        Game game(15);
+        GomokuGame game(15);
         int b[] = {3*15+3, 4*15+4, 5*15+5, 6*15+6, 7*15+7};
         int w[] = {0*15+0, 1*15+0, 2*15+0, 3*15+0};
         for (int i = 0; i < 4; ++i)

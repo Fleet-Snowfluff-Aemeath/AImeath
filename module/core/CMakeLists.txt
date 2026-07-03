@@ -48,6 +48,7 @@ add_executable(tests
     test/message_queue_test.cpp
     test/vfs_test.cpp
     test/pty_session_test.cpp
+    test/config_test.cpp
 )
 set_target_properties(tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output/test)
 target_link_libraries(tests core app GTest::GTest GTest::Main)

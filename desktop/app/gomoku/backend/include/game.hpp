@@ -1,7 +1,6 @@
 #pragma once
 
 #include <game_base.hpp>
-#include <game_api.hpp>
 #include "board.hpp"
 
 class GomokuGame : public Game

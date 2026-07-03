@@ -167,22 +167,32 @@ TEST(GoTest, ChineseScoringKomi)
 }
 
 extern "C" {
-    void* game_new(int w, int h);
-    void  game_free(void* g);
-    void  game_tick(void* g, int a);
-    char* game_get_state(void* g);
+    void* app_create(const char* config_json);
+    void  app_destroy(void* p);
+    char* app_process(void* p, const char* input_json);
+    void  app_free_string(char* s);
+    int   app_is_done(void* p);
 }
 
 TEST(GoTest, CApi)
 {
-    void* g = game_new(19, 19);
-    ASSERT_NE(g, nullptr);
-    game_tick(g, 3 * 19 + 3);
-    game_tick(g, 15 * 19 + 15);
-    char* s = game_get_state(g);
-    EXPECT_NE(std::string(s).find("\"go\""), std::string::npos);
-    std::free(s);
-    game_free(g);
+    void* app = app_create(nullptr);
+    ASSERT_NE(app, nullptr);
+    EXPECT_EQ(app_is_done(app), 0);
+
+    char* s = app_process(app, R"({"action":"new_game","width":19,"height":19})");
+    ASSERT_NE(s, nullptr);
+    std::string state(s);
+    EXPECT_NE(state.find("\"go\""), std::string::npos);
+    app_free_string(s);
+
+    s = app_process(app, R"({"action":"tick","value":66})");
+    ASSERT_NE(s, nullptr);
+    state = std::string(s);
+    EXPECT_NE(state.find("\"grid\""), std::string::npos);
+    app_free_string(s);
+
+    app_destroy(app);
 }
 
 int main(int argc, char** argv)

@@ -27,7 +27,7 @@ describe('Pacman', () => {
 
   it('收到状态渲染网格', async () => {
     const w = m({ gameType: 'pacman' })
-    fireMsg({ type: 'snake', grid: '@ *\n* @', score: 5, over: false })
+    fireMsg({ type: 'pacman', grid: '@ *\n* @', score: 5, over: false })
     await w.vm.$nextTick()
     expect(w.find('.grid-wrapper').exists()).toBe(true)
     expect(w.text()).toContain('Score: 5')
@@ -35,14 +35,14 @@ describe('Pacman', () => {
 
   it('显示分数', async () => {
     const w = m({ gameType: 'pacman' })
-    fireMsg({ type: 'snake', grid: '@', score: 30, over: false })
+    fireMsg({ type: 'pacman', grid: '@', score: 30, over: false })
     await w.vm.$nextTick()
     expect(w.text()).toContain('Score: 30')
   })
 
   it('Game Over 显示最终分数', async () => {
     const w = m({ gameType: 'pacman' })
-    fireMsg({ type: 'snake', grid: ' \n$', score: 10, over: true })
+    fireMsg({ type: 'pacman', grid: ' \n$', score: 10, over: true })
     await w.vm.$nextTick()
     expect(w.text()).toContain('Game Over')
     expect(w.text()).toContain('Score: 10')
@@ -51,7 +51,7 @@ describe('Pacman', () => {
   it('多次状态更新不崩溃', async () => {
     const w = m({ gameType: 'pacman' })
     for (let i = 0; i < 5; i++) {
-      fireMsg({ type: 'snake', grid: '@ *', score: i * 10, over: false })
+      fireMsg({ type: 'pacman', grid: '@ *', score: i * 10, over: false })
       await w.vm.$nextTick()
     }
     expect(w.find('.grid-wrapper').exists()).toBe(true)

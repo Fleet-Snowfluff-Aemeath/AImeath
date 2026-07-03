@@ -409,3 +409,34 @@ TEST(SnakeGameTest, ScorePreservedAfterGameOver)
     game.tick(static_cast<int>(Direction::RIGHT));  // tick after game over
     EXPECT_EQ(game.score(), final_score);
 }
+
+// ====== C API ======
+
+extern "C" {
+    void* app_create(const char* config_json);
+    void  app_destroy(void* p);
+    char* app_process(void* p, const char* input_json);
+    void  app_free_string(char* s);
+    int   app_is_done(void* p);
+}
+
+TEST(SnakeGameTest, CApi)
+{
+    void* app = app_create(nullptr);
+    ASSERT_NE(app, nullptr);
+    EXPECT_EQ(app_is_done(app), 0);
+
+    char* s = app_process(app, R"({"action":"new_game","width":20,"height":20})");
+    ASSERT_NE(s, nullptr);
+    std::string state(s);
+    EXPECT_NE(state.find("\"snake\""), std::string::npos);
+    app_free_string(s);
+
+    s = app_process(app, R"({"action":"tick","value":0})");
+    ASSERT_NE(s, nullptr);
+    state = std::string(s);
+    EXPECT_NE(state.find("\"grid\""), std::string::npos);
+    app_free_string(s);
+
+    app_destroy(app);
+}

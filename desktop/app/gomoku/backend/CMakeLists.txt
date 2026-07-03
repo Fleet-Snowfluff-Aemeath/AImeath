@@ -32,7 +32,11 @@ add_executable(tests
 set_target_properties(tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output/test)
 target_link_libraries(tests gomoku GTest::GTest GTest::Main)
 target_include_directories(tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
-target_include_directories(tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../../../shared/game/include)
+if(EXISTS ${CMAKE_SOURCE_DIR}/desktop/app/shared/game/include)
+    target_include_directories(tests PRIVATE ${CMAKE_SOURCE_DIR}/desktop/app/shared/game/include)
+else()
+    target_include_directories(tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../shared/game/include)
+endif()
 
 find_package(benchmark REQUIRED)
 add_executable(bench_gomoku benchmark/gomoku_bench.cpp)

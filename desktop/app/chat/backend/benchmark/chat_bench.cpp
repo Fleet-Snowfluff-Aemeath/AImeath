@@ -1,43 +1,76 @@
 #include <benchmark/benchmark.h>
-#include "chat.hpp"
+#include <string>
 
-static std::string meow(const std::string& text)
-{
-    return text + "\xe5\x96\xb5";
+// ---- C ABI for ChatApp (from chat_server.cpp) ----
+extern "C" {
+void* app_create(const char* config_json);
+void  app_destroy(void* p);
+void  app_on_input(void* p, const char* input_json);
+int   app_is_done(void* p);
+typedef void (*app_output_fn)(void* userdata, const char* json);
+void  app_set_output(void* p, app_output_fn cb, void* userdata);
 }
 
-static void BM_ChatProcessShort(benchmark::State& state)
+static void nullOutput(void*, const char*) {}
+
+static void BM_AppCreateDestroy(benchmark::State& state)
 {
-    Chat chat(meow);
     for (auto _ : state)
     {
-        auto result = chat.process("hello");
-        benchmark::DoNotOptimize(result);
+        void* app = app_create(nullptr);
+        app_destroy(app);
     }
 }
-BENCHMARK(BM_ChatProcessShort);
+BENCHMARK(BM_AppCreateDestroy);
 
-static void BM_ChatProcessLong(benchmark::State& state)
+static void BM_CommandImage(benchmark::State& state)
 {
-    std::string input(1000, 'x');
-    Chat chat(meow);
+    void* app = app_create(nullptr);
+    app_set_output(app, nullOutput, nullptr);
     for (auto _ : state)
     {
-        auto result = chat.process(input);
-        benchmark::DoNotOptimize(result);
+        app_on_input(app, R"({"text":"/图片"})");
     }
+    app_destroy(app);
 }
-BENCHMARK(BM_ChatProcessLong);
+BENCHMARK(BM_CommandImage);
 
-static void BM_ChatProcessChinese(benchmark::State& state)
+static void BM_CommandGame(benchmark::State& state)
 {
-    Chat chat(meow);
+    void* app = app_create(nullptr);
+    app_set_output(app, nullOutput, nullptr);
     for (auto _ : state)
     {
-        auto result = chat.process("今天天气不错，适合写代码");
-        benchmark::DoNotOptimize(result);
+        app_on_input(app, R"({"text":"/游戏 snake"})");
     }
+    app_destroy(app);
 }
-BENCHMARK(BM_ChatProcessChinese);
+BENCHMARK(BM_CommandGame);
+
+static void BM_CommandVideo(benchmark::State& state)
+{
+    void* app = app_create(nullptr);
+    app_set_output(app, nullOutput, nullptr);
+    for (auto _ : state)
+    {
+        app_on_input(app, R"({"text":"/视频"})");
+    }
+    app_destroy(app);
+}
+BENCHMARK(BM_CommandVideo);
+
+static void BM_CommandMixed(benchmark::State& state)
+{
+    void* app = app_create(nullptr);
+    app_set_output(app, nullOutput, nullptr);
+    for (auto _ : state)
+    {
+        app_on_input(app, R"({"text":"/图片"})");
+        app_on_input(app, R"({"text":"/音乐"})");
+        app_on_input(app, R"({"text":"/视频"})");
+    }
+    app_destroy(app);
+}
+BENCHMARK(BM_CommandMixed);
 
 BENCHMARK_MAIN();

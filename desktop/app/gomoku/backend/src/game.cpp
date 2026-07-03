@@ -1,4 +1,5 @@
 #include "game.hpp"
+#include <game_api.hpp>
 #include <boost/json.hpp>
 
 GomokuGame::GomokuGame(int size)
