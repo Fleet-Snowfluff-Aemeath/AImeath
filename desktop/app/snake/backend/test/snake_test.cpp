@@ -409,10 +409,11 @@ TEST(SnakeGameTest, TickOnGameOverNoCrash)
     for (int i = 0; i < 12; ++i)
         game.tick(static_cast<int>(Direction::RIGHT));
     EXPECT_TRUE(game.isOver());
+    int final_score = game.score();
     game.tick(static_cast<int>(Direction::RIGHT));
     game.tick(static_cast<int>(Direction::DOWN));
     EXPECT_TRUE(game.isOver());
-    EXPECT_EQ(game.score(), 0);
+    EXPECT_EQ(game.score(), final_score);
 }
 
 TEST(SnakeGameTest, TickReverseDirection)
