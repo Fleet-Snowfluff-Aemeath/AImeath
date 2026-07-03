@@ -17,7 +17,36 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake g++ libgtest-dev libbenchmark-dev libssl-dev
+          sudo apt-get install -y cmake g++ libssl-dev
+
+      - name: Build Boost 1.91.0
+        run: |
+          BOOST_ROOT=/usr/local/boost_1_91
+          wget -q https://archives.boost.io/release/1.91.0/source/boost_1_91_0.tar.gz
+          tar xzf boost_1_91_0.tar.gz
+          cd boost_1_91_0
+          ./bootstrap.sh --prefix=${BOOST_ROOT} --with-libraries=json,url,filesystem
+          sudo ./b2 install -j$(nproc) --prefix=${BOOST_ROOT} --with-json --with-url --with-filesystem variant=release link=shared threading=multi
+          echo "BOOST_ROOT=${BOOST_ROOT}" >> $GITHUB_ENV
+          sudo ldconfig ${BOOST_ROOT}/lib
+
+      - name: Build Google Test
+        run: |
+          git clone --depth 1 --branch v1.14.0 https://github.com/google/googletest.git
+          cd googletest
+          cmake -DCMAKE_BUILD_TYPE=Release -B build
+          cmake --build build -j$(nproc)
+          sudo cp build/lib/libgtest*.a /usr/local/lib/
+          sudo cp -r googletest/include/gtest /usr/local/include/
+          sudo cp -r googlemock/include/gmock /usr/local/include/
+
+      - name: Build Google Benchmark
+        run: |
+          git clone --depth 1 --branch v1.8.5 https://github.com/google/benchmark.git
+          cd benchmark
+          cmake -DCMAKE_BUILD_TYPE=Release -DBENCHMARK_ENABLE_TESTING=OFF -B build
+          cmake --build build -j$(nproc)
+          sudo cmake --install build
 
       - name: Build and test module/core
         run: cd module/core && bash test_build.sh
