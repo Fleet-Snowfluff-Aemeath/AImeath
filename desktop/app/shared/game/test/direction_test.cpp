@@ -19,6 +19,14 @@ TEST(DirectionTest, IsOppositeDir)
     EXPECT_FALSE(isOppositeDir(Direction::UP, Direction::UP));
 }
 
+TEST(DirectionTest, IsOppositeDirSelf)
+{
+    EXPECT_FALSE(isOppositeDir(Direction::UP, Direction::UP));
+    EXPECT_FALSE(isOppositeDir(Direction::DOWN, Direction::DOWN));
+    EXPECT_FALSE(isOppositeDir(Direction::LEFT, Direction::LEFT));
+    EXPECT_FALSE(isOppositeDir(Direction::RIGHT, Direction::RIGHT));
+}
+
 TEST(DirectionTest, ApplyDir)
 {
     int x = 5, y = 5;
@@ -32,4 +40,15 @@ TEST(DirectionTest, ApplyDir)
     EXPECT_EQ(x, 5); EXPECT_EQ(y, 5);
 }
 
-
+TEST(DirectionTest, ApplyDirAllFour)
+{
+    int x = 0, y = 0;
+    applyDir(Direction::RIGHT, x, y);
+    EXPECT_EQ(x, 1); EXPECT_EQ(y, 0);
+    applyDir(Direction::DOWN, x, y);
+    EXPECT_EQ(x, 1); EXPECT_EQ(y, 1);
+    applyDir(Direction::LEFT, x, y);
+    EXPECT_EQ(x, 0); EXPECT_EQ(y, 1);
+    applyDir(Direction::UP, x, y);
+    EXPECT_EQ(x, 0); EXPECT_EQ(y, 0);
+}

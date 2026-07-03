@@ -15,9 +15,9 @@ cd ..
 
 echo ""
 echo "=== Starting Game Server (port 3001) ==="
-LD_LIBRARY_PATH=build/output/lib ./build/output/gameserver &
+LD_LIBRARY_PATH=build/output/lib ./build/output/AImeath &
 SERVER_PID=$!
-echo "GameServer PID: $SERVER_PID"
+echo "AImeath PID: $SERVER_PID"
 sleep 1
 
 echo ""
@@ -29,7 +29,7 @@ echo "Vite PID: $VITE_PID"
 
 echo ""
 echo "=== Ready! ==="
-echo "GameServer:  http://localhost:3001  (WebSocket)"
+echo "AImeath:  http://localhost:3001  (WebSocket)"
 echo "Frontend:    http://localhost:5173/ (browser)"
 WSL_IP=$(ip addr show eth0 2>/dev/null | grep -oP 'inet \K[\d.]+' | head -1)
 if [ -n "$WSL_IP" ]; then

@@ -1,5 +1,5 @@
 /**
- * gameserver — 统一 WebSocket 服务端（全异步架构）
+ * AImeath — 统一 WebSocket 服务端（全异步架构）
  *
  * 端口从 config.json 的 "port" 字段读取，默认 3001。
  * 每个连接由 shared_ptr<Session> 管理生命周期，

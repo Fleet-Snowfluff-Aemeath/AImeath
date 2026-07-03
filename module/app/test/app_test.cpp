@@ -3,6 +3,8 @@
 #include "app_mod.hpp"
 #include <string>
 #include <cstring>
+#include <thread>
+#include <vector>
 
 // ---- AppModule / AppPtr ----
 
@@ -19,23 +21,34 @@ TEST(AppModuleTest, CreateWithNullDeleterReturnsNull)
     EXPECT_EQ(p.get(), nullptr);
 }
 
+TEST(AppModuleTest, IsAsyncFalseForMock)
+{
+    AppModuleCache cache;
+    auto m = cache.load("mock_app");
+    ASSERT_TRUE(m);
+    EXPECT_FALSE(m.is_async());
+}
+
 // ---- AppPtr with custom deleter ----
 
 struct TestApp { int val; };
 
 TEST(AppPtrTest, UniquePtrLifetime)
 {
-    bool destroyed = false;
     auto* raw = new TestApp{42};
     {
         AppDeleter d;
         d.deleter = [](void* p) { delete static_cast<TestApp*>(p); };
         AppPtr ptr(raw, d);
         EXPECT_EQ(static_cast<TestApp*>(ptr.get())->val, 42);
-        destroyed = false;
     }
-    // No assertion, just verify it compiles and runs without crash
     SUCCEED();
+}
+
+TEST(AppPtrTest, DefaultAppPtrIsNull)
+{
+    AppPtr p;
+    EXPECT_EQ(p.get(), nullptr);
 }
 
 // ---- AppModuleCache with mock .so ----
@@ -73,7 +86,6 @@ TEST(AppModuleCacheTest, CacheHit)
     auto m1 = cache.load("mock_app");
     ASSERT_TRUE(m1);
     auto m2 = cache.load("mock_app");
-    // Should return same cached handle
     EXPECT_TRUE(m2);
 }
 
@@ -83,9 +95,60 @@ TEST(AppModuleCacheTest, Evict)
     auto m = cache.load("mock_app");
     ASSERT_TRUE(m);
     cache.evict("mock_app");
-    // After evict, loading again should work (reload)
     auto m2 = cache.load("mock_app");
     EXPECT_TRUE(m2);
+}
+
+TEST(AppModuleCacheTest, EvictNonExistent)
+{
+    AppModuleCache cache;
+    EXPECT_NO_THROW(cache.evict("not_in_cache"));
+}
+
+TEST(AppModuleCacheTest, Clear)
+{
+    AppModuleCache cache;
+    auto m1 = cache.load("mock_app");
+    ASSERT_TRUE(m1);
+    cache.clear();
+    auto m2 = cache.load("mock_app");
+    EXPECT_TRUE(m2);
+}
+
+TEST(AppModuleCacheTest, ClearEmptyCache)
+{
+    AppModuleCache cache;
+    EXPECT_NO_THROW(cache.clear());
+}
+
+TEST(AppModuleCacheTest, StressLoadEvict)
+{
+    AppModuleCache cache;
+    constexpr int N = 50;
+    for (int i = 0; i < N; ++i)
+    {
+        auto m = cache.load("mock_app");
+        EXPECT_TRUE(m);
+        cache.evict("mock_app");
+    }
+}
+
+TEST(AppModuleCacheTest, ConcurrentLoad)
+{
+    AppModuleCache cache;
+    std::atomic<int> success{0};
+    constexpr int N = 10;
+    std::vector<std::thread> threads;
+
+    for (int i = 0; i < N; ++i)
+    {
+        threads.emplace_back([&]() {
+            auto m = cache.load("mock_app");
+            if (m) success.fetch_add(1);
+        });
+    }
+    for (auto& t : threads) t.join();
+    EXPECT_EQ(success.load(), N);
 }
 
 

@@ -9,6 +9,8 @@
 | `chat_burst.js` | 单连接 burst 发送：一次打开连接连续发送 N 条消息，验证所有回复 | `--rounds=10` |
 | `chat_concurrent.js` | 多连接并发：N 个连接各自 burst 发送 M 条，验证互不干扰 | `--connections=5 --rounds=5` |
 | `chat_stress.js` | 单连接持续压力：每收到一次回复再发下一条，持续 N 轮 | `--rounds=10 --delay-ms=50` |
+| `chat_command.js` | 测试聊天命令：/图片, /音乐, /视频, /游戏 | `--port=3001` |
+| `ws_smoke.js` | WebSocket 连接冒烟测试：连接→发送→接收→关闭 | `--port=3001` |
 
 ### 用法
 
@@ -44,5 +46,5 @@ bash test/run_all.sh
 
 ## 注意
 
-- 所有测试需先运行 `build.sh` 编译 `gameserver`
+- 所有测试需先运行 `build.sh` 编译 `AImeath`
 - `config.json` 中的 API key 和 token 为敏感信息，不可提交公开仓库

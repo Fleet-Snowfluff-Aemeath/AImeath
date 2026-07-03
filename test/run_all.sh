@@ -2,9 +2,9 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$PROJECT_ROOT"
-pkill -9 -f gameserver 2>/dev/null
+pkill -9 -f AImeath 2>/dev/null
 sleep 1
-LD_LIBRARY_PATH=build/output/lib ./build/output/gameserver > /tmp/srv.log 2>&1 &
+LD_LIBRARY_PATH=build/output/lib ./build/output/AImeath > /tmp/srv.log 2>&1 &
 sleep 2
 
 echo "=== BURST ==="
@@ -27,4 +27,4 @@ echo "burst:   $BURST_EXIT"
 echo "conc:    $CONC_EXIT"
 echo "stress:  $STRESS_EXIT"
 
-pkill -f gameserver 2>/dev/null
+pkill -f AImeath 2>/dev/null

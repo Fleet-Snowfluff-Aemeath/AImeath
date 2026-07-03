@@ -46,7 +46,7 @@ frontend/
 ```bash
 # 在 WSL 中，先启动游戏服务器（在项目根目录下执行）
 cd /path/to/project/root
-LD_LIBRARY_PATH=build/output/lib ./build/output/gameserver &
+LD_LIBRARY_PATH=build/output/lib ./build/output/AImeath &
 ```
 
 前端通过 `ws://WSL_IP:3001` 直连游戏服务器（非 Vite proxy）。

@@ -5,12 +5,12 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 echo "Root: $ROOT"
 
 # Kill any existing server
-pkill -f gameserver 2>/dev/null || true
+pkill -f AImeath 2>/dev/null || true
 sleep 1
 
 # Start server from root so it can find config.json
 cd "$ROOT"
-LD_LIBRARY_PATH=build/output/lib ./build/output/gameserver &
+LD_LIBRARY_PATH=build/output/lib ./build/output/AImeath &
 SERVER_PID=$!
 echo "Server PID: $SERVER_PID"
 sleep 2

@@ -2,138 +2,90 @@ name: CI
 
 on:
   push:
-    branches: [master, main]
+    branches: [main, master]
   pull_request:
-    branches: [master, main]
+    branches: [main, master]
 
 jobs:
-  build-and-test:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 40
-
+  # ====== C++ Backend Tests ======
+  cpp-tests:
+    name: C++ Backend Tests
+    runs-on: ubuntu-22.04
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Install system dependencies
+      - name: Install dependencies
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq build-essential cmake libssl-dev wget
+          sudo apt-get update
+          sudo apt-get install -y cmake g++ libgtest-dev libbenchmark-dev libssl-dev
 
-      - name: Cache Boost 1.91.0
-        id: cache-boost
-        uses: actions/cache@v4
-        with:
-          path: /usr/local/boost_1_91
-          key: boost-1.91.0-json-url-filesystem
-
-      - name: Build Boost 1.91.0
-        if: steps.cache-boost.outputs.cache-hit != 'true'
-        run: |
-          BOOST_ROOT=/usr/local/boost_1_91
-          wget -q https://archives.boost.io/release/1.91.0/source/boost_1_91_0.tar.gz
-          tar xzf boost_1_91_0.tar.gz
-          cd boost_1_91_0
-          ./bootstrap.sh --prefix=${BOOST_ROOT} --with-libraries=json,url,filesystem
-          sudo ./b2 install -j$(nproc) --prefix=${BOOST_ROOT} --with-json --with-url --with-filesystem variant=release link=shared threading=multi
-          sudo ldconfig ${BOOST_ROOT}/lib
-
-      - name: Set Boost env
-        run: echo "BOOST_ROOT=/usr/local/boost_1_91" >> $GITHUB_ENV
-
-      - name: Cache Google Test
-        id: cache-gtest
-        uses: actions/cache@v4
-        with:
-          path: /usr/local/lib/libgtest.a
-          key: gtest-v1.14.0
-
-      - name: Build Google Test
-        if: steps.cache-gtest.outputs.cache-hit != 'true'
-        run: |
-          git clone --depth 1 --branch v1.14.0 https://github.com/google/googletest.git
-          cd googletest
-          cmake -DCMAKE_BUILD_TYPE=Release -B build
-          cmake --build build -j$(nproc)
-          sudo cp build/lib/libgtest*.a /usr/local/lib/
-          sudo cp -r googletest/include/gtest /usr/local/include/
-          sudo cp -r googlemock/include/gmock /usr/local/include/
-
-      - name: Cache Google Benchmark
-        id: cache-benchmark
-        uses: actions/cache@v4
-        with:
-          path: /usr/local/lib/libbenchmark.a
-          key: benchmark-v1.8.5
-
-      - name: Build Google Benchmark
-        if: steps.cache-benchmark.outputs.cache-hit != 'true'
-        run: |
-          git clone --depth 1 --branch v1.8.5 https://github.com/google/benchmark.git
-          cd benchmark
-          cmake -DCMAKE_BUILD_TYPE=Release -DBENCHMARK_ENABLE_TESTING=OFF -B build
-          cmake --build build -j$(nproc)
-          sudo cmake --install build
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: desktop/package-lock.json
-
-      - name: C++ cmake build
-        run: |
-          mkdir -p build
-          cd build
-          cmake .. -DCMAKE_BUILD_TYPE=Release
-          make -j$(nproc)
-
-      - name: C++ unit tests (desktop apps)
-        run: |
-          cd build
-          LD_LIBRARY_PATH=output/lib:${BOOST_ROOT}/lib \
-            ./output/test/chat_tests \
-            ./output/test/filemanager_tests \
-            ./output/test/go_tests \
-            ./output/test/gomoku_tests \
-            ./output/test/pacman_tests \
-            ./output/test/snake_tests \
-            ./output/test/terminal_tests \
-            ./output/test/game_shared_tests \
-            ./output/test/app_tests \
-            ./output/test/agent_tests \
-            ./output/test/llm_tests
-
-      - name: module/core standalone test
+      - name: Build and test module/core
         run: cd module/core && bash test_build.sh
 
-      - name: module/app standalone test
+      - name: Build and test module/app
         run: cd module/app && bash test_build.sh
 
-      - name: module/llm standalone test
+      - name: Build and test module/llm
         run: cd module/llm && bash test_build.sh
 
-      - name: module/agent standalone test
+      - name: Build and test module/agent
         run: cd module/agent && bash test_build.sh
 
-      - name: Install stress test dependencies
-        run: cd test && npm ci --ignore-scripts
+      - name: Build and test shared/game
+        run: cd desktop/app/shared/game && bash test_build.sh
 
-      - name: Stress tests
-        run: |
-          cd test
-          pkill -9 -f gameserver 2>/dev/null || true
-          sleep 1
-          LD_LIBRARY_PATH=../build/output/lib ../build/output/gameserver > /tmp/srv.log 2>&1 &
-          sleep 2
-          node chat_burst.js --rounds=5
-          node chat_concurrent.js --connections=5 --rounds=5
-          node chat_stress.js --rounds=5
-          pkill -f gameserver 2>/dev/null || true
+      - name: Build and test snake/backend
+        run: cd desktop/app/snake/backend && bash test_build.sh
 
-      - name: Frontend npm install
-        run: cd desktop && npm ci --ignore-scripts
+      - name: Build and test gomoku/backend
+        run: cd desktop/app/gomoku/backend && bash test_build.sh
 
-      - name: Frontend vitest
+      - name: Build and test pacman/backend
+        run: cd desktop/app/pacman/backend && bash test_build.sh
+
+      - name: Build and test go/backend
+        run: cd desktop/app/go/backend && bash test_build.sh
+
+      - name: Build and test chat/backend
+        run: cd desktop/app/chat/backend && bash test_build.sh
+
+      - name: Build and test filemanager/backend
+        run: cd desktop/app/filemanager/backend && bash test_build.sh
+
+      - name: Build and test terminal/backend
+        run: cd desktop/app/terminal/backend && bash test_build.sh
+
+  # ====== Frontend Tests (Vitest) ======
+  frontend-tests:
+    name: Frontend Tests (Vitest)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: cd desktop && npm ci
+
+      - name: Run vitest
         run: cd desktop && npx vitest run
+
+  # ====== Integration Tests ======
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-22.04
+    needs: cpp-tests
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install test dependencies
+        run: cd test && npm ci
+
+      - name: Run ws_smoke
+        run: cd test && node ws_smoke.js

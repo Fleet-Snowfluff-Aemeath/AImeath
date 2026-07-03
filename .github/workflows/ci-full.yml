@@ -55,29 +55,50 @@ jobs:
           cache: 'npm'
           cache-dependency-path: desktop/package-lock.json
 
-      - name: C++ cmake build (full)
-        run: |
-          mkdir -p build
-          cd build
-          cmake .. -DCMAKE_BUILD_TYPE=Release
-          make -j$(nproc)
-
-      - name: C++ unit tests (chat_tests)
-        run: |
-          cd build
-          LD_LIBRARY_PATH=output/lib:${BOOST_ROOT}/lib ./output/test/chat_tests
-
-      - name: module/core standalone test
+      - name: module/core
         run: cd module/core && bash test_build.sh
 
-      - name: module/app standalone test
+      - name: module/app
         run: cd module/app && bash test_build.sh
 
-      - name: module/llm standalone test
+      - name: module/llm
         run: cd module/llm && bash test_build.sh
+
+      - name: module/agent
+        run: cd module/agent && bash test_build.sh
+
+      - name: shared/game
+        run: cd desktop/app/shared/game && bash test_build.sh
+
+      - name: snake/backend
+        run: cd desktop/app/snake/backend && bash test_build.sh
+
+      - name: gomoku/backend
+        run: cd desktop/app/gomoku/backend && bash test_build.sh
+
+      - name: pacman/backend
+        run: cd desktop/app/pacman/backend && bash test_build.sh
+
+      - name: go/backend
+        run: cd desktop/app/go/backend && bash test_build.sh
+
+      - name: chat/backend
+        run: cd desktop/app/chat/backend && bash test_build.sh
+
+      - name: filemanager/backend
+        run: cd desktop/app/filemanager/backend && bash test_build.sh
+
+      - name: terminal/backend
+        run: cd desktop/app/terminal/backend && bash test_build.sh
 
       - name: Frontend npm install
         run: cd desktop && npm ci --ignore-scripts
 
       - name: Frontend vitest
         run: cd desktop && npx vitest run
+
+      - name: Install test dependencies
+        run: cd test && npm ci
+
+      - name: Integration ws_smoke
+        run: cd test && node ws_smoke.js

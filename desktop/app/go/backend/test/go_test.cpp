@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include "board.hpp"
 #include "game.hpp"
+#include <boost/json.hpp>
 
 TEST(GoTest, StoneOpponent)
 {
@@ -100,6 +101,18 @@ TEST(GoTest, GetState)
     EXPECT_NE(s.find("\"grid\""), std::string::npos);
 }
 
+TEST(GoTest, GetStateStructure)
+{
+    GoGame game;
+    std::string s = game.getState();
+    auto val = boost::json::parse(s);
+    EXPECT_TRUE(val.is_object());
+    auto& obj = val.as_object();
+    EXPECT_EQ(obj["type"].as_string(), std::string("go"));
+    EXPECT_FALSE(obj["grid"].as_string().empty());
+    EXPECT_FALSE(obj["over"].as_bool());
+}
+
 TEST(GoTest, GameTickInvalid)
 {
     GoGame game;
@@ -109,6 +122,22 @@ TEST(GoTest, GameTickInvalid)
     EXPECT_EQ(game.turn(), Stone::WHITE);
     game.tick(9 * Board::SIZE + 9);
     EXPECT_EQ(game.turn(), Stone::WHITE);
+}
+
+TEST(GoTest, GameTickCorner)
+{
+    GoGame game;
+    game.tick(0); // (0,0) top-left corner
+    EXPECT_EQ(game.turn(), Stone::WHITE);
+    EXPECT_EQ(game.board().at(0, 0), Stone::BLACK);
+}
+
+TEST(GoTest, GameTickFarCorner)
+{
+    GoGame game;
+    game.tick((Board::SIZE - 1) * Board::SIZE + (Board::SIZE - 1)); // bottom-right
+    EXPECT_EQ(game.turn(), Stone::WHITE);
+    EXPECT_EQ(game.board().at(Board::SIZE - 1, Board::SIZE - 1), Stone::BLACK);
 }
 
 // ---- Dead stone marking ----
@@ -138,7 +167,6 @@ TEST(GoTest, SekiCountsBothStones)
 {
     Board b;
     int cap = 0;
-    // Place stones away from edges: B at (5,5),(6,6) W at (5,6),(6,5)
     b.place(5, 5, Stone::BLACK, cap);
     b.place(5, 6, Stone::WHITE, cap);
     b.place(6, 5, Stone::WHITE, cap);
@@ -153,18 +181,16 @@ TEST(GoTest, SekiCountsBothStones)
 
 TEST(GoTest, ChineseScoringKomi)
 {
-    // Black gets 185 Chinese points, white 176 → black should win with 3.75 komi
-    // After 2 passes: enter marking, confirm dead, then score
     GoGame game;
-    // Play a simple game ending with both passing
     game.tick(9 * Board::SIZE + 9);
     game.tick(GoGame::PASS);
-    game.tick(GoGame::PASS); // enters marking phase
+    game.tick(GoGame::PASS);
     game.tick(GoGame::CONFIRM_DEAD);
     int s = game.score();
-    // With just 1 black stone, score should reflect Chinese counting
     EXPECT_TRUE(s == 1 || s == 2 || s == 0);
 }
+
+// ---- C API ----
 
 extern "C" {
     void* app_create(const char* config_json);
@@ -195,8 +221,38 @@ TEST(GoTest, CApi)
     app_destroy(app);
 }
 
-int main(int argc, char** argv)
+TEST(GoTest, CApiMultipleCreateDestroy)
 {
-    ::testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
+    for (int i = 0; i < 5; ++i)
+    {
+        void* app = app_create(nullptr);
+        ASSERT_NE(app, nullptr);
+        EXPECT_EQ(app_is_done(app), 0);
+        app_destroy(app);
+    }
+}
+
+TEST(GoTest, CApiProcessInvalidJson)
+{
+    void* app = app_create(nullptr);
+    ASSERT_NE(app, nullptr);
+    char* s = app_process(app, "not json");
+    ASSERT_NE(s, nullptr);
+    app_free_string(s);
+    app_destroy(app);
+}
+
+TEST(GoTest, CApiMultipleTicks)
+{
+    void* app = app_create(nullptr);
+    ASSERT_NE(app, nullptr);
+    EXPECT_EQ(app_is_done(app), 0);
+
+    for (int i = 0; i < 5; ++i)
+    {
+        char* s = app_process(app, R"({"action":"tick","value":0})");
+        ASSERT_NE(s, nullptr);
+        app_free_string(s);
+    }
+    app_destroy(app);
 }

@@ -10,13 +10,14 @@ class MockWS {
 MockWS.OPEN = 1
 vi.stubGlobal('WebSocket', MockWS)
 
+let termInstance = null
 vi.mock('xterm', () => {
   const term = {
     open: vi.fn(), write: vi.fn(), dispose: vi.fn(),
     loadAddon: vi.fn(), onData: vi.fn(),
     get rows() { return 24 }, get cols() { return 80 },
   }
-  return { Terminal: vi.fn(function() { return term }) }
+  return { Terminal: vi.fn(function() { termInstance = term; return term }) }
 })
 vi.mock('@xterm/addon-fit', () => ({ FitAddon: vi.fn(function() { return { fit: vi.fn() } }) }))
 
@@ -34,8 +35,22 @@ describe('Terminal', () => {
     expect(wsInstance).not.toBeNull()
   })
 
+  it('收到 output 消息写入终端', async () => {
+    const w = mount(TerminalPage)
+    await w.vm.$nextTick()
+    expect(termInstance).not.toBeNull()
+    w.unmount()
+  })
+
   it('挂载不报错', () => {
     const w = mount(TerminalPage)
     w.unmount()
+  })
+
+  it('重复挂载卸载不报错', () => {
+    const w = mount(TerminalPage)
+    w.unmount()
+    const w2 = mount(TerminalPage)
+    w2.unmount()
   })
 })

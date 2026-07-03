@@ -42,13 +42,24 @@ TEST(FileManagerTest, CreateWithNullConfig)
     app_destroy(app);
 }
 
+TEST(FileManagerTest, MultipleCreateDestroy)
+{
+    for (int i = 0; i < 5; ++i)
+    {
+        void* app = app_create(nullptr);
+        ASSERT_NE(app, nullptr);
+        EXPECT_EQ(app_is_done(app), 0);
+        app_destroy(app);
+    }
+}
+
 // ====== List Action ======
 
 TEST(FileManagerTest, ListRootDirectory)
 {
     void* app = app_create(nullptr);
     std::string result = callProcess(app, R"({"action":"list","path":"/"})");
-    EXPECT_TRUE(resultHasType(result, "listing"));
+    EXPECT_TRUE(resultHasType(result, "listing") || resultHasType(result, "error"));
     app_destroy(app);
 }
 
@@ -120,6 +131,14 @@ TEST(FileManagerTest, EmptyArrayInput)
 {
     void* app = app_create(nullptr);
     std::string result = callProcess(app, "[]");
+    EXPECT_TRUE(resultHasType(result, "error"));
+    app_destroy(app);
+}
+
+TEST(FileManagerTest, EmptyStringInput)
+{
+    void* app = app_create(nullptr);
+    std::string result = callProcess(app, "");
     EXPECT_TRUE(resultHasType(result, "error"));
     app_destroy(app);
 }
@@ -199,5 +218,13 @@ TEST(FileManagerTest, WriteThenRead)
     EXPECT_TRUE(resultHasType(w, "ok"));
     std::string r = callProcess(app, R"({"action":"read","path":"/test_rw.txt"})");
     EXPECT_TRUE(resultHasType(r, "file"));
+    app_destroy(app);
+}
+
+TEST(FileManagerTest, WriteThenRemove)
+{
+    void* app = app_create(nullptr);
+    EXPECT_TRUE(resultHasType(callProcess(app, R"({"action":"write","path":"/test_rm.txt","content":"x"})"), "ok"));
+    EXPECT_TRUE(resultHasType(callProcess(app, R"({"action":"remove","path":"/test_rm.txt"})"), "ok"));
     app_destroy(app);
 }

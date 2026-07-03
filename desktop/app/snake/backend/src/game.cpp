@@ -25,7 +25,6 @@ void SnakeGame::tick(int action)
     Direction dir = static_cast<Direction>(action);
     m_snake.setDirection(dir);
     update(dir);
-    render();
 }
 
 void SnakeGame::update(Direction dir)
@@ -48,51 +47,6 @@ void SnakeGame::update(Direction dir)
     {
         m_game_over = true;
     }
-}
-
-void SnakeGame::render()
-{
-    std::ostringstream out;
-    out << "\033[2J\033[H\033[?25l";
-
-    out << '+';
-    for (int x = 0; x < m_board.width(); ++x) out << '-';
-    out << "+\n";
-
-    for (int y = 0; y < m_board.height(); ++y)
-    {
-        out << '|';
-        for (int x = 0; x < m_board.width(); ++x)
-        {
-            Position p{x, y};
-            if (p == m_snake.head())
-                out << 'O';
-            else if (m_snake.hasBodyAt(p))
-                out << '#';
-            else if (m_board.isFoodAt(p))
-                out << '$';
-            else
-                out << ' ';
-        }
-        out << "|\n";
-    }
-
-    out << '+';
-    for (int x = 0; x < m_board.width(); ++x) out << '-';
-    out << "+\n";
-
-    out << "Score: " << m_score << '\n';
-
-    std::cout << out.str() << std::flush;
-}
-
-void SnakeGame::renderGameOver()
-{
-    std::ostringstream out;
-    out << "\033[2J\033[H";
-    out << "Game Over!\n";
-    out << "Final Score: " << m_score << '\n';
-    std::cout << out.str() << std::flush;
 }
 
 std::string SnakeGame::renderGrid() const

@@ -134,4 +134,39 @@ describe('useGame', () => {
       expect(cellStyle('@').background).toBe('green')
     })
   })
+
+  describe('go game state', () => {
+    it('displays passes count', () => {
+      const { gameState } = useGame('go')
+      gameState.passes = 2
+      expect(gameState.passes).toBe(2)
+    })
+
+    it('displays capsB and capsW', () => {
+      const { gameState } = useGame('go')
+      gameState.capsB = 3
+      gameState.capsW = 1
+      expect(gameState.capsB).toBe(3)
+      expect(gameState.capsW).toBe(1)
+    })
+
+    it('displays komi', () => {
+      const { gameState } = useGame('go')
+      gameState.komi = 3.75
+      expect(gameState.komi).toBe(3.75)
+    })
+
+    it('marking mode flag', () => {
+      const { gameState } = useGame('go')
+      expect(gameState.marking).toBeFalsy()
+      gameState.marking = true
+      expect(gameState.marking).toBe(true)
+    })
+
+    it('deadMask display', () => {
+      const { gameState } = useGame('go')
+      gameState.deadMask = '1010'
+      expect(gameState.deadMask).toBe('1010')
+    })
+  })
 })

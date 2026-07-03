@@ -28,6 +28,16 @@ static void BM_CreateDestroy(benchmark::State& state)
 }
 BENCHMARK(BM_CreateDestroy);
 
+static void BM_CreateOnly(benchmark::State& state)
+{
+    for (auto _ : state) {
+        void* app = app_create(nullptr);
+        benchmark::DoNotOptimize(app);
+        app_destroy(app);
+    }
+}
+BENCHMARK(BM_CreateOnly);
+
 static void BM_ExecSyncEcho(benchmark::State& state)
 {
     void* app = app_create(nullptr);
@@ -71,5 +81,27 @@ static void BM_InvalidAction(benchmark::State& state)
     app_destroy(app);
 }
 BENCHMARK(BM_InvalidAction);
+
+static void BM_ResizeAction(benchmark::State& state)
+{
+    void* app = app_create(nullptr);
+    for (auto _ : state) {
+        std::string result = callProcess(app, R"({"action":"resize","rows":30,"cols":100})");
+        benchmark::DoNotOptimize(result);
+    }
+    app_destroy(app);
+}
+BENCHMARK(BM_ResizeAction);
+
+static void BM_MissingAction(benchmark::State& state)
+{
+    void* app = app_create(nullptr);
+    for (auto _ : state) {
+        std::string result = callProcess(app, R"({"cmd":"ls"})");
+        benchmark::DoNotOptimize(result);
+    }
+    app_destroy(app);
+}
+BENCHMARK(BM_MissingAction);
 
 BENCHMARK_MAIN();

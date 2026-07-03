@@ -28,6 +28,16 @@ static void BM_CreateDestroy(benchmark::State& state)
 }
 BENCHMARK(BM_CreateDestroy);
 
+static void BM_CreateOnly(benchmark::State& state)
+{
+    for (auto _ : state) {
+        void* app = app_create(nullptr);
+        benchmark::DoNotOptimize(app);
+        app_destroy(app);
+    }
+}
+BENCHMARK(BM_CreateOnly);
+
 static void BM_ListRoot(benchmark::State& state)
 {
     void* app = app_create(nullptr);
@@ -83,5 +93,29 @@ static void BM_MkdirRemove(benchmark::State& state)
     app_destroy(app);
 }
 BENCHMARK(BM_MkdirRemove);
+
+static void BM_ListInvalid(benchmark::State& state)
+{
+    void* app = app_create(nullptr);
+    for (auto _ : state) {
+        std::string result = callProcess(app, R"({"action":"list","path":"/__nonexistent__"})");
+        benchmark::DoNotOptimize(result);
+    }
+    app_destroy(app);
+}
+BENCHMARK(BM_ListInvalid);
+
+static void BM_WriteReadRemove(benchmark::State& state)
+{
+    void* app = app_create(nullptr);
+    for (auto _ : state) {
+        callProcess(app, R"({"action":"write","path":"/bench_rw.txt","content":"data"})");
+        std::string read = callProcess(app, R"({"action":"read","path":"/bench_rw.txt"})");
+        callProcess(app, R"({"action":"remove","path":"/bench_rw.txt"})");
+        benchmark::DoNotOptimize(read);
+    }
+    app_destroy(app);
+}
+BENCHMARK(BM_WriteReadRemove);
 
 BENCHMARK_MAIN();

@@ -3,11 +3,11 @@ set -e
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-pkill -9 gameserver 2>/dev/null || true
+pkill -9 AImeath 2>/dev/null || true
 sleep 2
 
 echo "=== Starting server ==="
-LD_LIBRARY_PATH=build/output/lib ./build/output/gameserver &
+LD_LIBRARY_PATH=build/output/lib ./build/output/AImeath &
 SPID=$!
 echo "Server PID=$SPID"
 sleep 3

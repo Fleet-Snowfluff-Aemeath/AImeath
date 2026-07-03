@@ -21,8 +21,6 @@ public:
 
 private:
     void update(Direction dir);
-    void render();
-    void renderGameOver();
     std::string renderGrid() const;
 
     Board m_board;

@@ -27,6 +27,7 @@ public:
              + ",\"over\":" + (m_over ? "true" : "false") + "}";
     }
     void setOver(bool o) { m_over = o; }
+    int last() const { return m_last; }
 };
 
 TEST(GameBaseTest, VirtualDispatch)
@@ -40,11 +41,34 @@ TEST(GameBaseTest, VirtualDispatch)
     EXPECT_NE(state.find("\"score\":10"), std::string::npos);
 }
 
+TEST(GameBaseTest, TickMultipleAccumulates)
+{
+    TestGame g;
+    g.tick(3);
+    EXPECT_EQ(g.score(), 3);
+    g.tick(7);
+    EXPECT_EQ(g.score(), 10);
+    g.tick(5);
+    EXPECT_EQ(g.score(), 15);
+}
+
 TEST(GameBaseTest, TickIgnoredWhenOver)
 {
     TestGame g;
     g.setOver(true);
     g.tick(5);
+    EXPECT_EQ(g.score(), 0);
+}
+
+TEST(GameBaseTest, IsOverInitiallyFalse)
+{
+    TestGame g;
+    EXPECT_FALSE(g.isOver());
+}
+
+TEST(GameBaseTest, ScoreInitiallyZero)
+{
+    TestGame g;
     EXPECT_EQ(g.score(), 0);
 }
 
@@ -149,5 +173,36 @@ TEST(GameApiTest, GetState)
     EXPECT_NE(state.find("\"score\""), std::string::npos);
     app_free_string(s);
 
+    app_destroy(app);
+}
+
+TEST(GameApiTest, TickBeforeNewGameReturnsEmpty)
+{
+    void* app = app_create(nullptr);
+    char* s = app_process(app, R"({"action":"tick","value":1})");
+    ASSERT_NE(s, nullptr);
+    std::string state(s);
+    EXPECT_NE(state.find("\"error\""), std::string::npos);
+    app_free_string(s);
+    app_destroy(app);
+}
+
+TEST(GameApiTest, MultipleCreateDestroy)
+{
+    for (int i = 0; i < 5; ++i)
+    {
+        void* app = app_create(nullptr);
+        ASSERT_NE(app, nullptr);
+        EXPECT_EQ(app_is_done(app), 0);
+        app_destroy(app);
+    }
+}
+
+TEST(GameApiTest, ProcessInvalidJson)
+{
+    void* app = app_create(nullptr);
+    char* s = app_process(app, "not json");
+    ASSERT_NE(s, nullptr);
+    app_free_string(s);
     app_destroy(app);
 }

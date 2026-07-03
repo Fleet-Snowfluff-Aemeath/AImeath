@@ -7,7 +7,9 @@
     "test": "bash run_all.sh",
     "burst": "node chat_burst.js",
     "concurrent": "node chat_concurrent.js",
-    "stress": "node chat_stress.js"
+    "stress": "node chat_stress.js",
+    "command": "node chat_command.js",
+    "smoke": "node ws_smoke.js"
   },
   "keywords": [],
   "author": "",

@@ -12,11 +12,11 @@ make -j$(nproc)
 
 echo ""
 echo "=== Running tests ==="
-./output/test/tests
+make run_tests
 
 echo ""
 echo "=== Running benchmarks ==="
-make bench
+make run_bench
 
 echo ""
 echo "=== Build & test passed ==="

@@ -36,7 +36,7 @@ async function fetchPort() {
   cachedPort = DEFAULT_PORT
   fetchDone = true
   console.warn(`[config] all ${FETCH_RETRIES} fetch attempts failed, falling back to default port ${DEFAULT_PORT}`)
-  console.warn(`[config] check that gameserver is running: LD_LIBRARY_PATH=build/output/lib ./build/output/gameserver`)
+  console.warn(`[config] check that AImeath is running: LD_LIBRARY_PATH=build/output/lib ./build/output/AImeath`)
   console.warn(`[config] if using WSL, try accessing frontend at http://<WSL-IP>:5173 instead of localhost`)
 }
 

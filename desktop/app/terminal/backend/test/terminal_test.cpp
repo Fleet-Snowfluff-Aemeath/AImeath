@@ -44,6 +44,16 @@ TEST(TerminalTest, CreateWithNullConfig)
     app_destroy(app);
 }
 
+TEST(TerminalTest, MultipleCreateDestroy)
+{
+    for (int i = 0; i < 5; ++i)
+    {
+        void* app = app_create(nullptr);
+        ASSERT_NE(app, nullptr);
+        app_destroy(app);
+    }
+}
+
 // ====== ExecSync Action ======
 
 TEST(TerminalTest, ExecSyncEcho)
@@ -68,6 +78,14 @@ TEST(TerminalTest, ExecSyncInvalidCommand)
     void* app = app_create(nullptr);
     std::string result = callProcess(app, R"({"action":"exec_sync","command":"__nonexistent_cmd_xyz__"})");
     EXPECT_TRUE(resultHasType(result, "error"));
+    app_destroy(app);
+}
+
+TEST(TerminalTest, ExecSyncEmptyCommand)
+{
+    void* app = app_create(nullptr);
+    std::string result = callProcess(app, R"({"action":"exec_sync","command":"true"})");
+    EXPECT_TRUE(resultHasType(result, "output") || resultHasType(result, "error"));
     app_destroy(app);
 }
 
@@ -105,12 +123,28 @@ TEST(TerminalTest, ExecMissingCmd)
     app_destroy(app);
 }
 
+TEST(TerminalTest, EmptyStringInput)
+{
+    void* app = app_create(nullptr);
+    std::string result = callProcess(app, "");
+    EXPECT_TRUE(resultHasType(result, "error"));
+    app_destroy(app);
+}
+
 // ====== Resize ======
 
 TEST(TerminalTest, ResizeWithoutSession)
 {
     void* app = app_create(nullptr);
     std::string result = callProcess(app, R"({"action":"resize","rows":30,"cols":100})");
+    EXPECT_EQ(result, "[]");
+    app_destroy(app);
+}
+
+TEST(TerminalTest, ResizeWithDefaults)
+{
+    void* app = app_create(nullptr);
+    std::string result = callProcess(app, R"({"action":"resize"})");
     EXPECT_EQ(result, "[]");
     app_destroy(app);
 }
@@ -124,13 +158,15 @@ TEST(TerminalTest, IsDoneWithoutSession)
     app_destroy(app);
 }
 
-// ====== ExecSync Empty Output ======
+// ====== SetOutput ======
 
-TEST(TerminalTest, ExecSyncEmptyCommand)
+TEST(TerminalTest, SetOutputDoesNotCrash)
 {
     void* app = app_create(nullptr);
-    std::string result = callProcess(app, R"({"action":"exec_sync","command":"true"})");
-    EXPECT_TRUE(resultHasType(result, "output") || resultHasType(result, "error"));
+    std::string captured;
+    app_set_output(app, [](void* udata, const char* json) {
+        *static_cast<std::string*>(udata) = json;
+    }, &captured);
     app_destroy(app);
 }
 

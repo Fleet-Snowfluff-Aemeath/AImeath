@@ -128,7 +128,7 @@ void Session::do_http_response()
         http::response<http::empty_body> res;
         res.version(11);
         res.result(http::status::no_content);
-        res.set(http::field::server, "gameserver");
+        res.set(http::field::server, "AImeath");
         res.set(http::field::access_control_allow_origin, "*");
         res.set(http::field::access_control_allow_methods, "GET, OPTIONS");
         res.set(http::field::access_control_allow_headers, "*");
@@ -144,7 +144,7 @@ void Session::do_http_response()
     http::response<http::string_body> res;
     res.version(11);
     res.result(http::status::ok);
-    res.set(http::field::server, "gameserver");
+    res.set(http::field::server, "AImeath");
     res.set(http::field::content_type, "application/json");
     res.set(http::field::access_control_allow_origin, "*");
 

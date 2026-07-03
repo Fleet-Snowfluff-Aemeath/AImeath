@@ -236,12 +236,10 @@ TEST(ChatServerTest, TextWhileStreamingQueues)
     CaptureOutput capture;
     app_set_output(app, capture_callback, &capture);
 
-    // First text starts streaming
-    app_on_input(app, R"({"text":"first msg"})");
+    app_test_set_streaming(app, 1);
     EXPECT_EQ(app_streaming(app), 1);
     EXPECT_EQ(app_queue_size(app), 0);
 
-    // Send more messages while streaming — should queue
     app_on_input(app, R"({"text":"second msg"})");
     app_on_input(app, R"({"text":"third msg"})");
     EXPECT_EQ(app_queue_size(app), 2);
@@ -259,11 +257,9 @@ TEST(ChatServerTest, StopActionClearsStreaming)
     CaptureOutput capture;
     app_set_output(app, capture_callback, &capture);
 
-    // Start streaming with a text message
-    app_on_input(app, R"({"text":"hello"})");
+    app_test_set_streaming(app, 1);
     EXPECT_EQ(app_streaming(app), 1);
 
-    // Send stop
     app_on_input(app, R"({"action":"stop"})");
     EXPECT_EQ(app_streaming(app), 0);
     EXPECT_EQ(app_queue_size(app), 0);
@@ -281,7 +277,6 @@ TEST(ChatServerTest, PollActionDoesNotCrash)
     CaptureOutput capture;
     app_set_output(app, capture_callback, &capture);
 
-    // Poll before any messages — should not crash
     app_on_input(app, R"({"action":"poll"})");
     EXPECT_EQ(app_is_done(app), 0);
 
@@ -298,23 +293,17 @@ TEST(ChatServerTest, SetStreamingAndDrainQueue)
     CaptureOutput capture;
     app_set_output(app, capture_callback, &capture);
 
-    // Initially not streaming
     EXPECT_EQ(app_streaming(app), 0);
     EXPECT_EQ(app_queue_size(app), 0);
 
-    // Force into streaming state
     app_test_set_streaming(app, 1);
     EXPECT_EQ(app_streaming(app), 1);
 
-    // Queue a message
     std::string queued = R"({"text":"queued msg"})";
     app_on_input(app, queued.c_str());
     EXPECT_GE(app_queue_size(app), 1);
 
-    // Drain queue — this will process the queued message and may start a new stream
     app_test_drain_queue(app);
-
-    // Queue should be empty after drain
     EXPECT_EQ(app_queue_size(app), 0);
 
     app_destroy(app);
@@ -377,6 +366,42 @@ TEST(ChatServerTest, DestroyOneDoesNotAffectOther)
     app_destroy(app2);
 }
 
+TEST(ChatServerTest, MultipleInstancesStress)
+{
+    void* app1 = app_create(nullptr);
+    void* app2 = app_create(nullptr);
+    void* app3 = app_create(nullptr);
+    ASSERT_NE(app1, nullptr);
+    ASSERT_NE(app2, nullptr);
+    ASSERT_NE(app3, nullptr);
+
+    CaptureOutput cap1, cap2, cap3;
+    app_set_output(app1, capture_callback, &cap1);
+    app_set_output(app2, capture_callback, &cap2);
+    app_set_output(app3, capture_callback, &cap3);
+
+    app_on_input(app1, R"({"text":"/图片"})");
+    app_on_input(app2, R"({"text":"/音乐"})");
+    app_on_input(app3, R"({"text":"/视频"})");
+
+    {
+        std::lock_guard<std::mutex> lock(cap1.mtx);
+        EXPECT_EQ(cap1.events.size(), 1u);
+    }
+    {
+        std::lock_guard<std::mutex> lock(cap2.mtx);
+        EXPECT_EQ(cap2.events.size(), 1u);
+    }
+    {
+        std::lock_guard<std::mutex> lock(cap3.mtx);
+        EXPECT_EQ(cap3.events.size(), 1u);
+    }
+
+    app_destroy(app1);
+    app_destroy(app2);
+    app_destroy(app3);
+}
+
 // ====== 连续 stop ======
 
 TEST(ChatServerTest, MultipleStopDoesNotCrash)
@@ -387,14 +412,43 @@ TEST(ChatServerTest, MultipleStopDoesNotCrash)
     CaptureOutput capture;
     app_set_output(app, capture_callback, &capture);
 
-    app_on_input(app, R"({"text":"hello"})");
+    app_test_set_streaming(app, 1);
     EXPECT_EQ(app_streaming(app), 1);
 
-    // Send stop multiple times — should not crash
     for (int i = 0; i < 5; ++i)
         app_on_input(app, R"({"action":"stop"})");
 
     EXPECT_EQ(app_streaming(app), 0);
+    EXPECT_EQ(app_is_done(app), 0);
+
+    app_destroy(app);
+}
+
+// ====== Empty / invalid input ======
+
+TEST(ChatServerTest, EmptyInputDoesNotCrash)
+{
+    void* app = app_create(nullptr);
+    ASSERT_NE(app, nullptr);
+
+    CaptureOutput capture;
+    app_set_output(app, capture_callback, &capture);
+
+    app_on_input(app, "{}");
+    EXPECT_EQ(app_is_done(app), 0);
+
+    app_destroy(app);
+}
+
+TEST(ChatServerTest, InvalidJsonDoesNotCrash)
+{
+    void* app = app_create(nullptr);
+    ASSERT_NE(app, nullptr);
+
+    CaptureOutput capture;
+    app_set_output(app, capture_callback, &capture);
+
+    app_on_input(app, "not json");
     EXPECT_EQ(app_is_done(app), 0);
 
     app_destroy(app);

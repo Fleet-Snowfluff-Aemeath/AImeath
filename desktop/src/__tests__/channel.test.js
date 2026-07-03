@@ -123,4 +123,35 @@ describe('createChannel', () => {
     vi.advanceTimersByTime(10)
     expect(ch.readyState).toBe(1)
   })
+
+  it('close then send does not throw', () => {
+    const ch = createChannel('ws://test', { maxRetries: 0 })
+    vi.advanceTimersByTime(10)
+    ch.close()
+    vi.advanceTimersByTime(100)
+    expect(() => ch.send({ action: 'test' })).not.toThrow()
+  })
+
+  it('fires onReconnecting with attempt count', () => {
+    const ch = createChannel('ws://test', { maxRetries: 3, retryDelay: 10 })
+    vi.advanceTimersByTime(10)
+    const fn = vi.fn()
+    ch.onReconnecting(fn)
+    mockWs.readyState = 3
+    mockWs.onclose({ code: 1006 })
+    vi.advanceTimersByTime(100)
+    expect(fn).toHaveBeenCalledWith(expect.objectContaining({ attempt: 1 }))
+  })
+
+  it('removes type listener via unsubscribe', () => {
+    const ch = createChannel('ws://test')
+    vi.advanceTimersByTime(10)
+    const fn = vi.fn()
+    const unsub = ch.on('game', fn)
+    mockWs.onmessage({ data: JSON.stringify({ type: 'game', grid: 'x' }) })
+    expect(fn).toHaveBeenCalledTimes(1)
+    unsub()
+    mockWs.onmessage({ data: JSON.stringify({ type: 'game', grid: 'y' }) })
+    expect(fn).toHaveBeenCalledTimes(1)
+  })
 })
