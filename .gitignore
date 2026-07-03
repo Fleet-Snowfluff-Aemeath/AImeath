@@ -12,5 +12,5 @@ result/
 compare
 workplace
 skills
-agent
+# agent
 ci_verify.sh
