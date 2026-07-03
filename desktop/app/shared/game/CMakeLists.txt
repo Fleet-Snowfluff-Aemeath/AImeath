@@ -36,7 +36,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
       add_executable(${target} ${src})
       set_target_properties(${target} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output/bench)
       target_link_libraries(${target} PRIVATE benchmark::benchmark)
-      target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+      target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include ${Boost_INCLUDE_DIRS})
   endfunction()
 
   file(GLOB BENCH_SOURCES CONFIGURE_DEPENDS benchmark/*.cpp)
