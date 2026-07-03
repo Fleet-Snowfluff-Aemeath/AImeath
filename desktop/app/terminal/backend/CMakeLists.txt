@@ -51,6 +51,7 @@ function(add_benchmark target src)
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${PROJ_ROOT}/module/app/include
         ${PROJ_ROOT}/module/core/include
+        ${Boost_INCLUDE_DIRS}
     )
 endfunction()
 

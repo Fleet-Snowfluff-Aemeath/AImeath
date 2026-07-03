@@ -52,6 +52,7 @@ function(add_benchmark target src)
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${CMAKE_CURRENT_SOURCE_DIR}/../../shared/game/include
         ${CMAKE_CURRENT_SOURCE_DIR}/../../../../module/app/include
+        ${Boost_INCLUDE_DIRS}
     )
 endfunction()
 
