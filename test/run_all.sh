@@ -1,30 +1,37 @@
 #!/bin/bash
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-cd "$PROJECT_ROOT"
-pkill -9 -f AImeath 2>/dev/null
-sleep 1
-LD_LIBRARY_PATH=build/output/lib ./build/output/AImeath > /tmp/srv.log 2>&1 &
-sleep 2
+set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+PORT=3001
+cd "$ROOT"
+
+# Start server
+SPID=$(bash test/start_server.sh "$PORT" | tail -1)
+trap "kill $SPID 2>/dev/null || true" EXIT
+
+echo ""
 echo "=== BURST ==="
-node test/chat_burst.js --rounds=5
+node test/chat_burst.js --rounds=5 --port="$PORT"
 BURST_EXIT=$?
 echo "exit=$BURST_EXIT"
 
+echo ""
 echo "=== CONCURRENT ==="
-node test/chat_concurrent.js --connections=5 --rounds=5
+node test/chat_concurrent.js --connections=5 --rounds=5 --port="$PORT"
 CONC_EXIT=$?
 echo "exit=$CONC_EXIT"
 
+echo ""
 echo "=== STRESS ==="
-node test/chat_stress.js --rounds=5
+node test/chat_stress.js --rounds=5 --port="$PORT"
 STRESS_EXIT=$?
 echo "exit=$STRESS_EXIT"
 
+echo ""
 echo "=== SUMMARY ==="
 echo "burst:   $BURST_EXIT"
 echo "conc:    $CONC_EXIT"
 echo "stress:  $STRESS_EXIT"
 
-pkill -f AImeath 2>/dev/null
+exit $(( BURST_EXIT + CONC_EXIT + STRESS_EXIT ))
