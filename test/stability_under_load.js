@@ -9,8 +9,8 @@ const SERVER = `ws://127.0.0.1:${PORT}`;
 let baseDisconnects = 0;
 const baseSockets = [];
 
-function makeMsg(index) {
-  return JSON.stringify({ text: `stability_test_msg_${index}` });
+function makeMsg() {
+  return JSON.stringify({ game: 'snake', action: 'new_game', width: 10, height: 10 });
 }
 
 function connectBase(index) {

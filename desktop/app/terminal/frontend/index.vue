@@ -8,6 +8,7 @@ import { Terminal } from 'xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import 'xterm/css/xterm.css'
 import { getWsUrl } from '../../../src/services/config.js'
+import { createChannel } from '../../../src/services/channel.js'
 
 const WS_URL = getWsUrl()
 const BASE = 'desktop/public/home'
@@ -17,41 +18,43 @@ const DNAME = decodeURIComponent(new URLSearchParams(location.search).get('name'
 const termContainer = ref(null)
 let term = null
 let fitAddon = null
-let ws = null
+let ch = null
 let pollTimer = null
 
-function connect() {
-  ws = new WebSocket(WS_URL)
+function bindSocket() {
+  ch = createChannel(WS_URL, { maxRetries: 5 })
 
-  ws.onopen = () => {
-    const p = {
-      app: 'terminal',
-      action: 'exec',
-      cmd: `cd ${BASE} && PS1='\\w # ' bash --norc`
-    }
-    if (WID) p.window_id = WID
-    if (DNAME) p.display_name = DNAME
-    ws.send(JSON.stringify(p))
-  }
-
-  ws.onmessage = (e) => {
-    try {
-      const data = JSON.parse(e.data)
-      if (data.type === 'output' && data.text) {
-        term.write(data.text)
+  ch.onOpen((isReconnect) => {
+    if (isReconnect) {
+      const p = { action: 'resume', app: 'terminal' }
+      if (WID) p.window_id = WID
+      if (DNAME) p.display_name = DNAME
+      ch.send(p)
+    } else {
+      const p = {
+        app: 'terminal',
+        action: 'exec',
+        cmd: `cd ${BASE} && PS1='\\w # ' bash --norc`
       }
-    } catch (err) {
-      // ignore
+      if (WID) p.window_id = WID
+      if (DNAME) p.display_name = DNAME
+      ch.send(p)
     }
-  }
+  })
 
-  ws.onclose = () => {
+  ch.onMessage((data) => {
+    if (data.type === 'output' && data.text) {
+      term.write(data.text)
+    }
+  })
+
+  ch.onClose(() => {
     term.write('\r\n\x1b[31m连接断开\x1b[0m\r\n')
-  }
+  })
 
-  ws.onerror = () => {
+  ch.onError(() => {
     term.write('\r\n\x1b[31m连接错误\x1b[0m\r\n')
-  }
+  })
 }
 
 onMounted(() => {
@@ -73,47 +76,39 @@ onMounted(() => {
   fitAddon.fit()
 
   term.onData(data => {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ action: 'stdin', data }))
-    }
+    ch.send({ action: 'stdin', data })
   })
 
-  connect()
+  bindSocket()
 
   pollTimer = setInterval(() => {
-    if (ws && ws.readyState === WebSocket.OPEN)
-      ws.send(JSON.stringify({ action: 'stdout' }))
+    ch.send({ action: 'stdout' })
   }, 60)
 
   window.addEventListener('resize', () => {
     fitAddon?.fit()
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({
-        action: 'resize',
-        rows: term.rows,
-        cols: term.cols
-      }))
-    }
+    ch.send({
+      action: 'resize',
+      rows: term.rows,
+      cols: term.cols
+    })
   })
 })
 
 onBeforeUnmount(() => {
   if (pollTimer) clearInterval(pollTimer)
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ action: 'close_window', window_id: WID }))
-  }
+  ch.send({ action: 'close_window', window_id: WID })
+  ch.close()
   setTimeout(() => {
-    if (ws) ws.close()
     if (term) term.dispose()
   }, 50)
 })
 
 window.addEventListener('message', (e) => {
   if (e.data?.type === 'window_closing') {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ action: 'close_window', window_id: WID }))
-    }
-    setTimeout(() => { if (ws) ws.close() }, 50)
+    ch.send({ action: 'close_window', window_id: WID })
+    ch.close()
+    setTimeout(() => { if (term) term.dispose() }, 50)
   }
 })
 </script>

@@ -230,6 +230,14 @@ void Session::route_and_setup()
             reg.registerSession(app_name_, shared_from_this());
             reg.registerWindow(window_id_, session_id_, app_name_);
 
+            if (app_is_done()) {
+                logger_.info() << "Restored app is already done, closing";
+                reg.removeStashedApp(window_id_);
+                enqueue(jsonError("restored app has ended"));
+                close_ws();
+                return;
+            }
+
             if (mod_.is_async()) {
                 mod_.app_set_output(app_.get(), &Session::app_output_cb, this);
                 if (mod_.app_set_io_context)
@@ -455,7 +463,7 @@ void Session::do_cleanup()
     ping_timer_.cancel();
 
     bool stashed = false;
-    if (!window_id_.empty() && app_ && !user_close_) {
+    if (!window_id_.empty() && app_ && !user_close_ && !app_is_done()) {
         auto& reg = Config::instance().sessionRegistry();
         reg.stashApp(window_id_, std::move(app_), std::move(mod_), app_name_);
         reg.unregisterSession(app_name_, this);
