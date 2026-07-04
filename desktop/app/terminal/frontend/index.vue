@@ -50,7 +50,7 @@ function bindSocket() {
       ch.close()
       term.write('\r\n\x1b[33m[进程已退出，窗口即将关闭]\x1b[0m\r\n')
       setTimeout(() => {
-        window.parent.postMessage({ type: 'agent_close_app', window_id: data.window_id || WID, app: '/terminal' }, '*')
+        window.parent.postMessage({ type: 'agent_close_app', window_id: data.window_id || WID, app: 'terminal' }, '*')
       }, 500)
     }
     if (data.type === 'error' && data.msg && data.msg.includes('session expired')) {
