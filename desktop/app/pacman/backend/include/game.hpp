@@ -4,7 +4,6 @@
 #include <game_api.hpp>
 #include "board.hpp"
 #include "direction.hpp"
-#include "direction.hpp"
 
 class PacmanGame : public Game
 {

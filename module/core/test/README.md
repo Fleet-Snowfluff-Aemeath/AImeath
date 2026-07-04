@@ -1,6 +1,6 @@
 # test/ —— 单元测试（Google Test）
 
-共 88 个测试用例，覆盖全部 6 个组件。
+共 135+ 个测试用例，覆盖 10 个核心组件。
 
 ## 文件说明
 
@@ -64,6 +64,13 @@
 - 命名空间验证：`key::APP`/`key::TEXT`/`key::GAME`、`appname::CHAT`/`appname::SNAKE`
 - `Listener` 构造和 shutdown（默认端口和自定义端口）
 - `Session` 构造（有/无 fallback_pool）
+
+### config_test.cpp（13 个测试）
+- Config::getInt/getString 默认值
+- SessionRegistry 注册/查找/全部查找/注销
+- SessionRegistry 窗口管理（registerWindow/unregisterWindow/listActiveWindows）
+- 多应用类型共存
+- 越界/不存在查询返回 null
 
 ## 运行
 

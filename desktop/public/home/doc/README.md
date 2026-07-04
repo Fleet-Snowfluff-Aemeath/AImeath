@@ -101,7 +101,7 @@ make bench                    # 编译基准测试
 cd build && make -j$(nproc)
 
 # 运行（监听 0.0.0.0:3001）
-LD_LIBRARY_PATH=output/lib ./output/gameserver
+LD_LIBRARY_PATH=output/lib ./output/AImeath
 ```
 
 服务器提供两种 WebSocket 端点：
@@ -137,7 +137,7 @@ npm run dev                    # 启动 Vite 开发服务器
 
 - **统一加载模式**：所有游戏模块导出相同 `extern "C"` 6 函数签名，`GameModule` 封装 `dlopen` + `boost::dll` 缓存加载
 - **代码复用**：`wsutil` 抽取 URL 解析和 JSON 工具函数到 core，`backend/main.cpp` 复用 `httpsPostStream` 做流式 HTTPS 请求
-- **Core 直接链接**：`main.cpp` 和 `gameserver` 直接链接 `libcore.so`（不通过 dlopen），仅游戏模块动态加载
+- **Core 直接链接**：`main.cpp` 和 `AImeath` 直接链接 `libcore.so`（不通过 dlopen），仅游戏模块动态加载
 - **游戏状态输出**：`getState()` 使用 `boost::json::object` + `boost::json::serialize()` 生成合法 JSON，无需手工拼接和转义
 - **NetConn**：基于 Boost.Asio + ThreadPool 的异步 HTTP/WebSocket 客户端，含自动重连
 - **httpsPostStream**：同步 HTTPS 请求 + SSE 行级回调，OpenSSL 支持，30s 超时

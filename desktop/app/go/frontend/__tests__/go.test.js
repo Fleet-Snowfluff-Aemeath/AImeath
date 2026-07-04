@@ -27,14 +27,14 @@ describe('Go', () => {
 
   it('收到状态渲染网格', async () => {
     const w = m({ gameType: 'go' })
-    fireMsg({ type: 'snake', grid: 'BW\nWB', score: 0, over: false, turn: 'B', passes: 0, capsB: 0, capsW: 0, komi: 3.75 })
+    fireMsg({ type: 'go', grid: 'BW\nWB', score: 0, over: false, turn: 'B', passes: 0, capsB: 0, capsW: 0, komi: 3.75 })
     await w.vm.$nextTick()
     expect(w.find('.grid').exists()).toBe(true)
   })
 
   it('显示回合信息', async () => {
     const w = m({ gameType: 'go' })
-    fireMsg({ type: 'snake', grid: 'B', score: 0, over: false, turn: 'B', passes: 1, capsB: 2, capsW: 1, komi: 3.75 })
+    fireMsg({ type: 'go', grid: 'B', score: 0, over: false, turn: 'B', passes: 1, capsB: 2, capsW: 1, komi: 3.75 })
     await w.vm.$nextTick()
     expect(w.text()).toContain('黑棋')
     expect(w.text()).toContain('B2')
@@ -44,42 +44,42 @@ describe('Go', () => {
 
   it('回合切换为白棋', async () => {
     const w = m({ gameType: 'go' })
-    fireMsg({ type: 'snake', grid: 'B\n W', score: 0, over: false, turn: 'W' })
+    fireMsg({ type: 'go', grid: 'B\n W', score: 0, over: false, turn: 'W' })
     await w.vm.$nextTick()
     expect(w.text()).toContain('白棋')
   })
 
   it('Black wins', async () => {
     const w = m({ gameType: 'go' })
-    fireMsg({ type: 'snake', grid: 'BW', score: 0, over: true, winner: 1 })
+    fireMsg({ type: 'go', grid: 'BW', score: 0, over: true, winner: 1 })
     await w.vm.$nextTick()
     expect(w.text()).toContain('Black wins!')
   })
 
   it('White wins', async () => {
     const w = m({ gameType: 'go' })
-    fireMsg({ type: 'snake', grid: 'WB', score: 0, over: true, winner: 2 })
+    fireMsg({ type: 'go', grid: 'WB', score: 0, over: true, winner: 2 })
     await w.vm.$nextTick()
     expect(w.text()).toContain('White wins!')
   })
 
   it('Draw', async () => {
     const w = m({ gameType: 'go' })
-    fireMsg({ type: 'snake', grid: '..', score: 0, over: true, winner: 0 })
+    fireMsg({ type: 'go', grid: '..', score: 0, over: true, winner: 0 })
     await w.vm.$nextTick()
     expect(w.text()).toContain('Draw.')
   })
 
   it('标记死子模式', async () => {
     const w = m({ gameType: 'go' })
-    fireMsg({ type: 'snake', grid: 'BW\nWB', score: 0, over: true, winner: 0, marking: true, deadMask: '1000' })
+    fireMsg({ type: 'go', grid: 'BW\nWB', score: 0, over: true, winner: 0, marking: true, deadMask: '1000' })
     await w.vm.$nextTick()
     expect(w.text()).toContain('确认死子')
   })
 
   it('Game Over 时隐藏 winner (marking 模式)', async () => {
     const w = m({ gameType: 'go' })
-    fireMsg({ type: 'snake', grid: 'BW', score: 0, over: true, winner: 1, marking: true })
+    fireMsg({ type: 'go', grid: 'BW', score: 0, over: true, winner: 1, marking: true })
     await w.vm.$nextTick()
     expect(w.text()).not.toContain('Black wins!')
   })

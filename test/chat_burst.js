@@ -5,7 +5,7 @@
  * 用法:
  *   node test/chat_burst.js [--rounds N] [--port P]
  *
- * 默认: 5 轮, 端口 3001
+ * 默认: 10 轮, 端口 3001
  */
 
 const WebSocket = require('ws');

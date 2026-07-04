@@ -8,6 +8,13 @@ static void BM_DirectionIsOpposite(benchmark::State& state)
 }
 BENCHMARK(BM_DirectionIsOpposite);
 
+static void BM_DirectionIsOppositeFalse(benchmark::State& state)
+{
+    for (auto _ : state)
+        benchmark::DoNotOptimize(isOppositeDir(Direction::UP, Direction::LEFT));
+}
+BENCHMARK(BM_DirectionIsOppositeFalse);
+
 static void BM_DirectionApplyDir(benchmark::State& state)
 {
     int x = 0, y = 0;
@@ -19,5 +26,20 @@ static void BM_DirectionApplyDir(benchmark::State& state)
     }
 }
 BENCHMARK(BM_DirectionApplyDir);
+
+static void BM_DirectionApplyDirAllFour(benchmark::State& state)
+{
+    int x = 0, y = 0;
+    for (auto _ : state)
+    {
+        applyDir(Direction::UP, x, y);
+        applyDir(Direction::RIGHT, x, y);
+        applyDir(Direction::DOWN, x, y);
+        applyDir(Direction::LEFT, x, y);
+        benchmark::DoNotOptimize(x);
+        benchmark::DoNotOptimize(y);
+    }
+}
+BENCHMARK(BM_DirectionApplyDirAllFour);
 
 BENCHMARK_MAIN();

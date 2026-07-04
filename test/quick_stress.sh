@@ -1,22 +1,16 @@
 #!/bin/bash
-set -e
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+PORT=3001
 cd "$ROOT"
 
-pkill -9 gameserver 2>/dev/null || true
-sleep 2
+SPID=$(bash test/start_server.sh "$PORT" | tail -1)
+trap "kill $SPID 2>/dev/null || true" EXIT
 
-echo "=== Starting server ==="
-LD_LIBRARY_PATH=build/output/lib ./build/output/gameserver &
-SPID=$!
-echo "Server PID=$SPID"
-sleep 3
-
-echo "=== Running test ==="
-node test/chat_stress.js --rounds=5 --delay-ms=300
+echo "=== Running quick stress ==="
+node test/chat_stress.js --rounds=5 --delay-ms=300 --port="$PORT"
 RES=$?
-
 echo "=== Result: $RES ==="
-kill $SPID 2>/dev/null
-wait $SPID 2>/dev/null
 exit $RES

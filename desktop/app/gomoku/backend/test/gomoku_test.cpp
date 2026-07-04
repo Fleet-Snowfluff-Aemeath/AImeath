@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include "board.hpp"
 #include "game.hpp"
+#include <boost/json.hpp>
 
 // ====== Board ======
 
@@ -72,6 +73,15 @@ TEST(BoardTest, EmptyBoardAllEmpty)
             EXPECT_EQ(board.at(r, c), Cell::EMPTY);
 }
 
+TEST(BoardTest, PlaceBothColors)
+{
+    Board board(10);
+    EXPECT_TRUE(board.place(0, 0, Cell::BLACK));
+    EXPECT_TRUE(board.place(0, 1, Cell::WHITE));
+    EXPECT_EQ(board.at(0, 0), Cell::BLACK);
+    EXPECT_EQ(board.at(0, 1), Cell::WHITE);
+}
+
 // ====== Game ======
 
 TEST(GomokuGameTest, Construction)
@@ -80,6 +90,9 @@ TEST(GomokuGameTest, Construction)
     EXPECT_FALSE(game.isOver());
     EXPECT_EQ(game.score(), 0);
     EXPECT_EQ(game.currentPlayer(), 1);
+    EXPECT_FALSE(game.hasWinner());
+    EXPECT_EQ(game.winner(), 0);
+    EXPECT_EQ(game.board().size(), 15);
 }
 
 TEST(GomokuGameTest, TickValid)
@@ -122,8 +135,6 @@ TEST(GomokuGameTest, TurnsAlternate)
 TEST(GomokuGameTest, HorizontalWin)
 {
     GomokuGame game(15);
-    // Black: (7,3),(7,4),(7,5),(7,6),(7,7) → horizontal 5
-    // White: (0,0),(1,0),(2,0),(3,0)
     int b[] = {7*15+3, 7*15+4, 7*15+5, 7*15+6, 7*15+7};
     int w[] = {0*15+0, 1*15+0, 2*15+0, 3*15+0};
     for (int i = 0; i < 4; ++i)
@@ -141,7 +152,6 @@ TEST(GomokuGameTest, HorizontalWin)
 TEST(GomokuGameTest, VerticalWin)
 {
     GomokuGame game(15);
-    // Black: (3,7),(4,7),(5,7),(6,7),(7,7) → vertical 5
     int b[] = {3*15+7, 4*15+7, 5*15+7, 6*15+7, 7*15+7};
     int w[] = {0*15+0, 1*15+0, 2*15+0, 3*15+0};
     for (int i = 0; i < 4; ++i)
@@ -157,7 +167,6 @@ TEST(GomokuGameTest, VerticalWin)
 TEST(GomokuGameTest, DiagonalWin)
 {
     GomokuGame game(15);
-    // Black: (3,3),(4,4),(5,5),(6,6),(7,7) → diagonal
     int b[] = {3*15+3, 4*15+4, 5*15+5, 6*15+6, 7*15+7};
     int w[] = {0*15+0, 1*15+0, 2*15+0, 3*15+0};
     for (int i = 0; i < 4; ++i)
@@ -173,7 +182,6 @@ TEST(GomokuGameTest, DiagonalWin)
 TEST(GomokuGameTest, AntiDiagonalWin)
 {
     GomokuGame game(15);
-    // Black: (3,7),(4,6),(5,5),(6,4),(7,3) → anti-diagonal /
     int b[] = {3*15+7, 4*15+6, 5*15+5, 6*15+4, 7*15+3};
     int w[] = {0*15+0, 1*15+0, 2*15+0, 3*15+0};
     for (int i = 0; i < 4; ++i)
@@ -189,7 +197,6 @@ TEST(GomokuGameTest, AntiDiagonalWin)
 TEST(GomokuGameTest, WhiteWins)
 {
     GomokuGame game(15);
-    // Black: scattered (no 5-in-a-row), White: horizontal 5 at row 5
     int b[] = {0*15+0, 2*15+2, 4*15+4, 6*15+6};
     int w[] = {5*15+3, 5*15+4, 5*15+5, 5*15+6, 5*15+7};
     for (int i = 0; i < 4; ++i)
@@ -197,7 +204,6 @@ TEST(GomokuGameTest, WhiteWins)
         game.tick(b[i]);
         game.tick(w[i]);
     }
-    // Black's turn, white needs one more
     game.tick(1*15+1);
     EXPECT_FALSE(game.isOver());
     game.tick(w[4]);
@@ -207,9 +213,7 @@ TEST(GomokuGameTest, WhiteWins)
 
 TEST(GomokuGameTest, DrawFullBoard)
 {
-    // 3x3 board = 9 cells, no one gets 5 → draw
     GomokuGame game(3);
-    // B: 0,2,5,7   W: 1,3,4,6,8  → all 9 filled, no 5-in-a-row oll on 3x3
     int moves[] = {0, 1, 2, 3, 5, 4, 7, 6, 8};
     for (int i = 0; i < 8; ++i)
     {
@@ -233,7 +237,6 @@ TEST(GomokuGameTest, GameOverStopsMoves)
     }
     game.tick(b[4]);
     EXPECT_TRUE(game.isOver());
-    // tick after game over should be ignored
     game.tick(4*15+4);
     EXPECT_TRUE(game.isOver());
     EXPECT_EQ(game.score(), 1);
@@ -260,7 +263,6 @@ TEST(GomokuGameTest, InvalidMoveDoesNotChangePlayer)
     GomokuGame game(15);
     game.tick(7*15+7);
     EXPECT_EQ(game.currentPlayer(), 2);
-    // invalid move
     game.tick(7*15+7);
     EXPECT_EQ(game.currentPlayer(), 2);
 }
@@ -268,10 +270,6 @@ TEST(GomokuGameTest, InvalidMoveDoesNotChangePlayer)
 TEST(GomokuGameTest, BlockingWin)
 {
     GomokuGame game(15);
-    // Black tries horizontal at row 7: (7,4),(7,5),(7,6),(7,7)
-    // White blocks: (7,8)
-    // Black tries vertical at col 10: (8,10),(9,10),(10,10),(11,10)
-    // White blocks: (12,10) — but black still needs 5
     int b1[] = {7*15+4, 7*15+5, 7*15+6, 7*15+7};
     int w1[] = {0*15+0, 1*15+0, 2*15+0, 7*15+8};
     for (int i = 0; i < 4; ++i)
@@ -291,4 +289,117 @@ TEST(GomokuGameTest, BlockingWin)
     game.tick(12*15+10);
     EXPECT_TRUE(game.isOver());
     EXPECT_EQ(game.score(), 1);
+}
+
+TEST(GomokuGameTest, FirstMoveCorner)
+{
+    GomokuGame game(15);
+    game.tick(0); // top-left corner row=0,col=0
+    EXPECT_EQ(game.currentPlayer(), 2);
+    EXPECT_FALSE(game.isOver());
+}
+
+TEST(GomokuGameTest, GetStateStructure)
+{
+    GomokuGame game(15);
+    std::string state = game.getState();
+    auto val = boost::json::parse(state);
+    EXPECT_TRUE(val.is_object());
+    auto& obj = val.as_object();
+    EXPECT_EQ(obj["type"].as_string(), std::string("gomoku"));
+    EXPECT_EQ(obj["s"].as_int64(), 15);
+    EXPECT_EQ(obj["cur"].as_int64(), 1);
+    EXPECT_EQ(obj["score"].as_int64(), 0);
+    EXPECT_EQ(obj["over"].as_bool(), false);
+    EXPECT_EQ(obj["winner"].as_int64(), 0);
+    EXPECT_TRUE(obj.contains("grid"));
+}
+
+TEST(GomokuGameTest, GetStateAfterWin)
+{
+    GomokuGame game(15);
+    int b[] = {7*15+3, 7*15+4, 7*15+5, 7*15+6, 7*15+7};
+    int w[] = {0*15+0, 1*15+0, 2*15+0, 3*15+0};
+    for (int i = 0; i < 4; ++i)
+    {
+        game.tick(b[i]);
+        game.tick(w[i]);
+    }
+    game.tick(b[4]);
+    EXPECT_TRUE(game.isOver());
+
+    std::string state = game.getState();
+    auto val = boost::json::parse(state);
+    EXPECT_TRUE(val.as_object()["over"].as_bool());
+    EXPECT_EQ(val.as_object()["winner"].as_int64(), 1);
+    EXPECT_EQ(val.as_object()["score"].as_int64(), 1);
+    EXPECT_TRUE(game.hasWinner());
+    EXPECT_EQ(game.winner(), 1);
+}
+
+// ====== C API ======
+
+extern "C" {
+    void* app_create(const char* config_json);
+    void  app_destroy(void* p);
+    char* app_process(void* p, const char* input_json);
+    void  app_free_string(char* s);
+    int   app_is_done(void* p);
+}
+
+TEST(GomokuGameTest, CApi)
+{
+    void* app = app_create(nullptr);
+    ASSERT_NE(app, nullptr);
+    EXPECT_EQ(app_is_done(app), 0);
+
+    char* s = app_process(app, R"({"action":"new_game","width":15,"height":15})");
+    ASSERT_NE(s, nullptr);
+    std::string state(s);
+    EXPECT_NE(state.find("\"gomoku\""), std::string::npos);
+    app_free_string(s);
+
+    s = app_process(app, R"({"action":"tick","value":119})");
+    ASSERT_NE(s, nullptr);
+    state = std::string(s);
+    EXPECT_NE(state.find("\"grid\""), std::string::npos);
+    app_free_string(s);
+
+    app_destroy(app);
+}
+
+TEST(GomokuGameTest, CApiMultipleCreateDestroy)
+{
+    for (int i = 0; i < 5; ++i)
+    {
+        void* app = app_create(nullptr);
+        ASSERT_NE(app, nullptr);
+        EXPECT_EQ(app_is_done(app), 0);
+        app_destroy(app);
+    }
+}
+
+TEST(GomokuGameTest, CApiProcessInvalidJson)
+{
+    void* app = app_create(nullptr);
+    ASSERT_NE(app, nullptr);
+    char* s = app_process(app, "not json");
+    ASSERT_NE(s, nullptr);
+    app_free_string(s);
+    app_destroy(app);
+}
+
+TEST(GomokuGameTest, CApiMultipleTicks)
+{
+    void* app = app_create(nullptr);
+    ASSERT_NE(app, nullptr);
+    EXPECT_EQ(app_is_done(app), 0);
+
+    for (int i = 0; i < 5; ++i)
+    {
+        char* s = app_process(app, R"({"action":"tick","value":0})");
+        ASSERT_NE(s, nullptr);
+        app_free_string(s);
+    }
+    app_destroy(app);
 }

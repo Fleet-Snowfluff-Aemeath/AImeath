@@ -1,7 +1,22 @@
 #include <gtest/gtest.h>
 #include "app_manager.hpp"
+#include "app_mod.hpp"
 #include "config.hpp"
 #include <boost/json.hpp>
+
+class AppManagerTestFixture : public ::testing::Test
+{
+protected:
+    AppModuleCache cache;
+    AppManager& mgr = AppManager::instance();
+
+    void SetUp() override
+    {
+        mgr.init(&cache);
+    }
+};
+
+// ---- singleton ----
 
 TEST(AppManagerTest, SingletonExists)
 {
@@ -9,15 +24,81 @@ TEST(AppManagerTest, SingletonExists)
     SUCCEED();
 }
 
-TEST(AppManagerTest, ListAppsInitiallyEmpty)
+// ---- init ----
+
+TEST_F(AppManagerTestFixture, InitDoesNotCrash)
 {
-    auto arr = AppManager::instance().listApps();
+    mgr.init(&cache);
+    SUCCEED();
+}
+
+TEST_F(AppManagerTestFixture, InitTwiceDoesNotCrash)
+{
+    mgr.init(&cache);
+    mgr.init(&cache);
+    SUCCEED();
+}
+
+// ---- openApp ----
+
+TEST_F(AppManagerTestFixture, OpenAppWithoutInit)
+{
+    mgr.init(nullptr);
+    EXPECT_FALSE(mgr.openApp("mock_app", "{}"));
+    mgr.init(&cache);
+}
+
+TEST_F(AppManagerTestFixture, OpenAppInvalidModule)
+{
+    EXPECT_FALSE(mgr.openApp("nonexistent_module_xyz", "{}"));
+}
+
+TEST_F(AppManagerTestFixture, OpenAppValidModule)
+{
+    EXPECT_TRUE(mgr.openApp("mock_app", "{}"));
+}
+
+// ---- closeApp ----
+
+TEST_F(AppManagerTestFixture, CloseApp)
+{
+    EXPECT_TRUE(mgr.closeApp("mock_app"));
+}
+
+// ---- getAppState ----
+
+TEST_F(AppManagerTestFixture, GetAppStateWithoutSession)
+{
+    auto result = mgr.getAppState("nonexistent_app");
+    EXPECT_TRUE(result.is_null());
+}
+
+// ---- controlApp ----
+
+TEST_F(AppManagerTestFixture, ControlAppWithoutSession)
+{
+    auto result = mgr.controlApp("nonexistent_app", R"({"action":"test"})");
+    EXPECT_TRUE(result.is_null());
+}
+
+TEST_F(AppManagerTestFixture, ControlAppChatWithoutSession)
+{
+    auto result = mgr.controlApp("chat", R"({"action":"test"})");
+    EXPECT_TRUE(result.is_null());
+}
+
+// ---- listApps ----
+
+TEST_F(AppManagerTestFixture, ListAppsInitiallyEmpty)
+{
+    auto arr = mgr.listApps();
     EXPECT_TRUE(arr.empty());
 }
 
-TEST(AppManagerTest, SubscribeAndNotify)
+// ---- subscribe / notify ----
+
+TEST_F(AppManagerTestFixture, SubscribeAndNotify)
 {
-    auto& mgr = AppManager::instance();
     std::string receivedApp;
     boost::json::value receivedState;
 
@@ -40,9 +121,8 @@ TEST(AppManagerTest, SubscribeAndNotify)
     mgr.unsubscribe(handle);
 }
 
-TEST(AppManagerTest, UnsubscribeStopsNotifications)
+TEST_F(AppManagerTestFixture, UnsubscribeStopsNotifications)
 {
-    auto& mgr = AppManager::instance();
     int callCount = 0;
 
     auto handle = mgr.subscribe(
@@ -59,9 +139,8 @@ TEST(AppManagerTest, UnsubscribeStopsNotifications)
     EXPECT_EQ(callCount, 1);
 }
 
-TEST(AppManagerTest, MultipleSubscribers)
+TEST_F(AppManagerTestFixture, MultipleSubscribers)
 {
-    auto& mgr = AppManager::instance();
     int count1 = 0, count2 = 0;
 
     auto h1 = mgr.subscribe([&](const std::string&, const boost::json::value&) { ++count1; });
@@ -76,9 +155,8 @@ TEST(AppManagerTest, MultipleSubscribers)
     mgr.unsubscribe(h2);
 }
 
-TEST(AppManagerTest, SubscriberExceptionIsolated)
+TEST_F(AppManagerTestFixture, SubscriberExceptionIsolated)
 {
-    auto& mgr = AppManager::instance();
     int goodCount = 0;
 
     auto badHandle = mgr.subscribe(
@@ -99,4 +177,55 @@ TEST(AppManagerTest, SubscriberExceptionIsolated)
 
     mgr.unsubscribe(badHandle);
     mgr.unsubscribe(goodHandle);
+}
+
+TEST_F(AppManagerTestFixture, SubscribeReturnsUniqueHandles)
+{
+    auto h1 = mgr.subscribe([](const std::string&, const boost::json::value&) {});
+    auto h2 = mgr.subscribe([](const std::string&, const boost::json::value&) {});
+    EXPECT_NE(h1, h2);
+    mgr.unsubscribe(h1);
+    mgr.unsubscribe(h2);
+}
+
+TEST_F(AppManagerTestFixture, UnsubscribeNonExistent)
+{
+    EXPECT_NO_THROW(mgr.unsubscribe(0));
+    EXPECT_NO_THROW(mgr.unsubscribe(99999));
+}
+
+TEST_F(AppManagerTestFixture, NotifyStateChangeWithNoSubscribers)
+{
+    EXPECT_NO_THROW(
+        mgr.notifyStateChange("test", boost::json::object{{"x", 1}})
+    );
+}
+
+// ---- window management ----
+
+TEST_F(AppManagerTestFixture, RegisterWindowAndList)
+{
+    mgr.registerWindow("win_1", "sess_1", "test_app");
+
+    auto windows = mgr.listActiveWindows();
+    EXPECT_TRUE(windows.empty());
+
+    mgr.unregisterWindow("win_1");
+}
+
+TEST_F(AppManagerTestFixture, WindowRegistryCrud)
+{
+    mgr.registerWindow("w1", "s1", "app_a");
+    mgr.registerWindow("w2", "s2", "app_b");
+
+    mgr.unregisterWindow("w1");
+    mgr.unregisterWindow("w2");
+    SUCCEED();
+}
+
+TEST_F(AppManagerTestFixture, MultipleUnregisterWindow)
+{
+    mgr.registerWindow("win_x", "sess_x", "test_app");
+    mgr.unregisterWindow("win_x");
+    EXPECT_NO_THROW(mgr.unregisterWindow("win_x"));
 }

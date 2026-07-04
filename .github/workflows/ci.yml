@@ -2,34 +2,45 @@ name: CI
 
 on:
   push:
-    branches: [master, main]
+    branches: [main, master]
   pull_request:
-    branches: [master, main]
+    branches: [main, master]
 
 jobs:
-  build-and-test:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-
+  # ====== C++ Backend Tests ======
+  cpp-tests:
+    name: C++ Backend Tests
+    runs-on: ubuntu-22.04
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Install system dependencies
+      - name: Install dependencies
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq build-essential cmake libssl-dev
+          sudo apt-get update
+          sudo apt-get install -y cmake g++ libssl-dev
+
+      - name: Cache Boost
+        id: cache-boost
+        uses: actions/cache@v4
+        with:
+          path: /usr/local/boost_1_91
+          key: boost-1.91.0-${{ runner.os }}-v1
 
       - name: Build Boost 1.91.0
+        if: steps.cache-boost.outputs.cache-hit != 'true'
         run: |
           BOOST_ROOT=/usr/local/boost_1_91
           wget -q https://archives.boost.io/release/1.91.0/source/boost_1_91_0.tar.gz
           tar xzf boost_1_91_0.tar.gz
           cd boost_1_91_0
-           ./bootstrap.sh --prefix=${BOOST_ROOT} --with-libraries=json,url,filesystem
+          ./bootstrap.sh --prefix=${BOOST_ROOT} --with-libraries=json,url,filesystem
           sudo ./b2 install -j$(nproc) --prefix=${BOOST_ROOT} --with-json --with-url --with-filesystem variant=release link=shared threading=multi
-          echo "BOOST_ROOT=${BOOST_ROOT}" >> $GITHUB_ENV
           sudo ldconfig ${BOOST_ROOT}/lib
+        env:
+          BOOST_ROOT: /usr/local/boost_1_91
+
+      - name: Setup Boost env
+        run: echo "BOOST_ROOT=/usr/local/boost_1_91" >> $GITHUB_ENV
 
       - name: Build Google Test
         run: |
@@ -41,27 +52,80 @@ jobs:
           sudo cp -r googletest/include/gtest /usr/local/include/
           sudo cp -r googlemock/include/gmock /usr/local/include/
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: desktop/package-lock.json
-
-      - name: C++ cmake build
+      - name: Build Google Benchmark
         run: |
-          mkdir -p build
-          cd build
+          git clone --depth 1 --branch v1.8.5 https://github.com/google/benchmark.git
+          cd benchmark
+          cmake -DCMAKE_BUILD_TYPE=Release -DBENCHMARK_ENABLE_TESTING=OFF -B build
+          cmake --build build -j$(nproc)
+          sudo cmake --install build
+
+      - name: Build and test module/core
+        run: cd module/core && bash test_build.sh
+
+      - name: Build and test module/app
+        run: cd module/app && bash test_build.sh
+
+      - name: Build and test module/llm
+        run: cd module/llm && bash test_build.sh
+
+      - name: Build and test module/agent
+        run: cd module/agent && bash test_build.sh
+
+      - name: Build and test shared/game
+        run: cd desktop/app/shared/game && bash test_build.sh
+
+      - name: Build and test snake/backend
+        run: cd desktop/app/snake/backend && bash test_build.sh
+
+      - name: Build and test gomoku/backend
+        run: cd desktop/app/gomoku/backend && bash test_build.sh
+
+      - name: Build and test pacman/backend
+        run: cd desktop/app/pacman/backend && bash test_build.sh
+
+      - name: Build and test go/backend
+        run: cd desktop/app/go/backend && bash test_build.sh
+
+      - name: Build and test chat/backend
+        run: cd desktop/app/chat/backend && bash test_build.sh
+
+      - name: Build and test filemanager/backend
+        run: cd desktop/app/filemanager/backend && bash test_build.sh
+
+      - name: Build and test terminal/backend
+        run: cd desktop/app/terminal/backend && bash test_build.sh
+
+      - name: Full project build
+        run: |
+          mkdir -p build && cd build
           cmake .. -DCMAKE_BUILD_TYPE=Release
           make -j$(nproc)
 
-      - name: C++ unit tests
+      - name: Install test deps
+        run: cd test && npm ci
+
+      - name: Start server & integration test
         run: |
-          cd build
-          LD_LIBRARY_PATH=output/lib:${BOOST_ROOT}/lib ./output/test/chat_tests
+          echo '{"port":3099,"fileRoot":"/tmp"}' > config.json
+          LD_LIBRARY_PATH=build/output/lib:${BOOST_ROOT}/lib ./build/output/AImeath &
+          for i in $(seq 1 30); do nc -z localhost 3099 && break; sleep 1; done
+          node test/ws_smoke.js --port=3099
+          kill %1 2>/dev/null || true
 
-      - name: Frontend npm install
-        run: cd desktop && npm ci --ignore-scripts
+  # ====== Frontend Tests (Vitest) ======
+  frontend-tests:
+    name: Frontend Tests (Vitest)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
 
-      - name: Frontend vitest
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: cd desktop && npm ci
+
+      - name: Run vitest
         run: cd desktop && npx vitest run

@@ -46,8 +46,18 @@ function runClient(id) {
             console.log(`[conn #${id}] sent ${ROUNDS} messages`);
         });
 
-        state.ws.on('message', () => {
+        state.ws.on('message', (data) => {
             state.recvCount++;
+            try {
+                const msg = JSON.parse(data.toString());
+                if (msg.type === 'stream_end') {
+                    state.streamEndCount++;
+                    if (state.streamEndCount >= ROUNDS && !state.done) {
+                        console.log(`[conn #${id}] got ${state.streamEndCount}/${ROUNDS}, closing`);
+                        state.ws.close();
+                    }
+                }
+            } catch (_) {}
         });
 
         state.ws.on('close', (code, reason) => {
@@ -63,20 +73,6 @@ function runClient(id) {
 
         state.ws.on('error', (err) => {
             console.error(`[conn #${id}] error: ${err.message}`);
-        });
-
-        // Track stream_end events from the data stream
-        state.ws.on('message', (data) => {
-            try {
-                const msg = JSON.parse(data.toString());
-                if (msg.type === 'stream_end') {
-                    state.streamEndCount++;
-                    if (state.streamEndCount >= ROUNDS && !state.done) {
-                        console.log(`[conn #${id}] got ${state.streamEndCount}/${ROUNDS}, closing`);
-                        state.ws.close();
-                    }
-                }
-            } catch (_) {}
         });
     });
 }

@@ -20,8 +20,6 @@
 /// Note: includes app_api.hpp so game modules can also include this header
 /// for the macro definition.  GAME_CLASS is checked at macro-expansion time.
 
-// ---- inline JSON helpers (from game_app_adapter) ----
-
 static std::string _gameJsonGetStr(const std::string& msg, const std::string& key)
 {
     try {

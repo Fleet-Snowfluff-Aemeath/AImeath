@@ -2,6 +2,18 @@
 #include "board.hpp"
 #include "game.hpp"
 
+// ====== Board ======
+
+static void BM_BoardConstruct(benchmark::State& state)
+{
+    for (auto _ : state)
+    {
+        Board board(20, 20);
+        benchmark::DoNotOptimize(board.width());
+    }
+}
+BENCHMARK(BM_BoardConstruct);
+
 static void BM_BoardGenerateBeans(benchmark::State& state)
 {
     Board board(20, 20);
@@ -37,30 +49,6 @@ static void BM_BoardRemoveBean(benchmark::State& state)
 }
 BENCHMARK(BM_BoardRemoveBean);
 
-static void BM_GameTick(benchmark::State& state)
-{
-    Game game(20, 20);
-    int dir = 0;
-    for (auto _ : state)
-    {
-        game.tick(static_cast<Direction>(dir % 4));
-        ++dir;
-    }
-}
-BENCHMARK(BM_GameTick);
-
-static void BM_GameTickUntilGameOver(benchmark::State& state)
-{
-    for (auto _ : state)
-    {
-        Game game(10, 10);
-        while (!game.isOver())
-            game.tick(Direction::RIGHT);
-        benchmark::DoNotOptimize(game.score());
-    }
-}
-BENCHMARK(BM_GameTickUntilGameOver);
-
 static void BM_BoardIsBeanConsistency(benchmark::State& state)
 {
     Board board(100, 100);
@@ -74,5 +62,87 @@ static void BM_BoardIsBeanConsistency(benchmark::State& state)
     }
 }
 BENCHMARK(BM_BoardIsBeanConsistency);
+
+// ====== PacmanGame ======
+
+static void BM_PacmanGameConstruct(benchmark::State& state)
+{
+    for (auto _ : state)
+    {
+        PacmanGame game(20, 20);
+        benchmark::DoNotOptimize(game.score());
+    }
+}
+BENCHMARK(BM_PacmanGameConstruct);
+
+static void BM_GameTick(benchmark::State& state)
+{
+    PacmanGame game(20, 20);
+    int dir = 0;
+    for (auto _ : state)
+    {
+        game.tick(dir % 4);
+        ++dir;
+    }
+}
+BENCHMARK(BM_GameTick);
+
+static void BM_GameTickUntilGameOver(benchmark::State& state)
+{
+    for (auto _ : state)
+    {
+        PacmanGame game(10, 10);
+        while (!game.isOver())
+            game.tick(static_cast<int>(Direction::RIGHT));
+        benchmark::DoNotOptimize(game.score());
+    }
+}
+BENCHMARK(BM_GameTickUntilGameOver);
+
+static void BM_GameGetState(benchmark::State& state)
+{
+    int size = state.range(0);
+    PacmanGame game(size, size);
+    for (auto _ : state)
+    {
+        auto s = game.getState();
+        benchmark::DoNotOptimize(s);
+    }
+}
+BENCHMARK(BM_GameGetState)->Arg(10)->Arg(30)->Arg(50);
+
+static void BM_GameWinnerQueries(benchmark::State& state)
+{
+    PacmanGame game(5, 5);
+    for (int i = 0; i < 5; ++i)
+        game.tick(static_cast<int>(Direction::RIGHT));
+    for (auto _ : state)
+    {
+        benchmark::DoNotOptimize(game.isOver());
+        benchmark::DoNotOptimize(game.score());
+        benchmark::DoNotOptimize(game.playerX());
+    }
+}
+BENCHMARK(BM_GameWinnerQueries);
+
+static void BM_GameEatAllBeans(benchmark::State& state)
+{
+    for (auto _ : state)
+    {
+        PacmanGame game(5, 5);
+        int cycles = 0;
+        while (!game.isOver() && cycles < 300)
+        {
+            for (int d = 0; d < 4; ++d)
+            {
+                game.tick(d);
+                if (game.isOver()) break;
+            }
+            ++cycles;
+        }
+        benchmark::DoNotOptimize(game.score());
+    }
+}
+BENCHMARK(BM_GameEatAllBeans);
 
 BENCHMARK_MAIN();

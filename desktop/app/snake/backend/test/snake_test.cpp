@@ -2,6 +2,7 @@
 #include "snake.hpp"
 #include "board.hpp"
 #include "game.hpp"
+#include <boost/json.hpp>
 
 // ====== Snake ======
 
@@ -81,17 +82,13 @@ TEST(SnakeTest, DirectionBuffered)
 TEST(SnakeTest, SelfCollision)
 {
     Snake snake(5, 5);
-    // Eat 3 times to grow
     for (int i = 0; i < 3; ++i)
         snake.advance();
     EXPECT_EQ(snake.body().size(), 6u);
-    // Turn down, eat
     snake.setDirection(Direction::DOWN);
     snake.advance();
-    // Turn left, eat
     snake.setDirection(Direction::LEFT);
     snake.advance();
-    // Turn up — head goes into own body
     snake.setDirection(Direction::UP);
     snake.advance();
     EXPECT_TRUE(snake.collidesWithSelf());
@@ -100,7 +97,6 @@ TEST(SnakeTest, SelfCollision)
 TEST(SnakeTest, NoSelfCollisionAfterNormalMove)
 {
     Snake snake(5, 5);
-    // Straight line with pop — never collides
     for (int i = 0; i < 20; ++i)
     {
         snake.advance();
@@ -158,7 +154,6 @@ TEST(SnakeTest, PopTailThenAdvance)
 
 TEST(SnakeTest, AllReverseDirectionsBlocked)
 {
-    // Start RIGHT, turn DOWN → then UP should be blocked
     {
         Snake snake(10, 10);
         snake.setDirection(Direction::DOWN);
@@ -167,7 +162,6 @@ TEST(SnakeTest, AllReverseDirectionsBlocked)
         snake.advance();
         EXPECT_EQ(snake.head().y, 12);
     }
-    // Start RIGHT, turn UP → then DOWN should be blocked
     {
         Snake snake(10, 10);
         snake.setDirection(Direction::UP);
@@ -176,7 +170,6 @@ TEST(SnakeTest, AllReverseDirectionsBlocked)
         snake.advance();
         EXPECT_EQ(snake.head().y, 8);
     }
-    // Start RIGHT, turn UP, then LEFT → then RIGHT should be blocked
     {
         Snake snake(10, 10);
         snake.setDirection(Direction::UP);
@@ -187,7 +180,6 @@ TEST(SnakeTest, AllReverseDirectionsBlocked)
         snake.advance();
         EXPECT_EQ(snake.head().x, 8);
     }
-    // Start RIGHT, turn UP, then RIGHT → then LEFT should be blocked
     {
         Snake snake(10, 10);
         snake.setDirection(Direction::UP);
@@ -206,7 +198,6 @@ TEST(SnakeTest, ConsecutiveDirectionChanges)
     snake.setDirection(Direction::UP);
     snake.setDirection(Direction::LEFT);
     snake.setDirection(Direction::DOWN);
-    // Only last one (DOWN) applies
     snake.advance();
     EXPECT_EQ(snake.head(), Position({5, 6}));
 }
@@ -214,7 +205,6 @@ TEST(SnakeTest, ConsecutiveDirectionChanges)
 TEST(SnakeTest, HeadConsistencyAfterComplexPath)
 {
     Snake snake(5, 5);
-    // R, R, D, D, L, L, U — traces a Π shape
     for (int i = 0; i < 2; ++i) { snake.advance(); snake.popTail(); }
     snake.setDirection(Direction::DOWN);
     for (int i = 0; i < 2; ++i) { snake.advance(); snake.popTail(); }
@@ -223,7 +213,6 @@ TEST(SnakeTest, HeadConsistencyAfterComplexPath)
     snake.setDirection(Direction::UP);
     snake.advance();
     snake.popTail();
-    // After Π: head at (5,6), body size 3
     EXPECT_EQ(snake.head(), Position({5, 6}));
     EXPECT_EQ(snake.body().size(), 3u);
 }
@@ -231,9 +220,7 @@ TEST(SnakeTest, HeadConsistencyAfterComplexPath)
 TEST(SnakeTest, SelfCollisionGrowThenUTurn)
 {
     Snake snake(5, 5);
-    // Grow to length 4
     snake.advance();
-    // Turn
     snake.setDirection(Direction::DOWN);
     snake.advance();
     snake.setDirection(Direction::LEFT);
@@ -241,6 +228,24 @@ TEST(SnakeTest, SelfCollisionGrowThenUTurn)
     snake.setDirection(Direction::UP);
     snake.advance();
     EXPECT_TRUE(snake.collidesWithSelf());
+}
+
+TEST(SnakeTest, AdvanceManyTimesWithoutPop)
+{
+    Snake snake(5, 5);
+    for (int i = 0; i < 10; ++i)
+        snake.advance();
+    EXPECT_EQ(snake.body().size(), 13u);
+    EXPECT_EQ(snake.head(), Position({15, 5}));
+}
+
+TEST(SnakeTest, SnakeAtOrigin)
+{
+    Snake snake(0, 0);
+    EXPECT_EQ(snake.head(), Position({0, 0}));
+    EXPECT_EQ(snake.body().size(), 3u);
+    snake.advance();
+    EXPECT_EQ(snake.head(), Position({1, 0}));
 }
 
 // ====== Board ======
@@ -261,6 +266,13 @@ TEST(BoardTest, boardDimensions)
     EXPECT_EQ(board.height(), 25);
 }
 
+TEST(BoardTest, FoodDefaultCenter)
+{
+    Board board(30, 20);
+    EXPECT_EQ(board.food().x, 15);
+    EXPECT_EQ(board.food().y, 10);
+}
+
 TEST(BoardTest, FoodChangesOnGenerate)
 {
     Snake snake(10, 10);
@@ -270,7 +282,7 @@ TEST(BoardTest, FoodChangesOnGenerate)
     {
         board.generateFood(snake);
         if (board.food().x != first.x || board.food().y != first.y)
-            return;  // position changed at least once
+            return;
     }
     ADD_FAILURE() << "food position never changed after 10 regenerate";
 }
@@ -299,12 +311,10 @@ TEST(BoardTest, FoodNotOnSnakeLargeBoard)
 
 TEST(BoardTest, FoodNotOnSnakeFullBody)
 {
-    // Snake fills most of a small board
     Snake snake(1, 1);
     Board board(4, 4);
     for (int i = 0; i < 10; ++i)
         snake.advance();
-    // Now snake is long, food must avoid all body segments
     for (int i = 0; i < 50; ++i)
     {
         board.generateFood(snake);
@@ -343,8 +353,6 @@ TEST(SnakeGameTest, TickMovesSnake)
 
 TEST(SnakeGameTest, TickGameOverWall)
 {
-    // Snake starts at (10,10) going RIGHT, board 20x20.
-    // After 10 ticks to the right, head reaches x=20 → out of bounds.
     SnakeGame game(20, 20);
     for (int i = 0; i < 9; ++i)
     {
@@ -355,24 +363,63 @@ TEST(SnakeGameTest, TickGameOverWall)
     EXPECT_TRUE(game.isOver());
 }
 
+TEST(SnakeGameTest, TickGameOverTopWall)
+{
+    SnakeGame game(20, 20);
+    game.tick(static_cast<int>(Direction::UP));
+    for (int i = 0; i < 9; ++i)
+    {
+        game.tick(static_cast<int>(Direction::UP));
+        EXPECT_FALSE(game.isOver());
+    }
+    game.tick(static_cast<int>(Direction::UP));
+    EXPECT_TRUE(game.isOver());
+}
+
+TEST(SnakeGameTest, TickGameOverLeftWall)
+{
+    SnakeGame game(20, 20);
+    game.tick(static_cast<int>(Direction::UP));
+    game.tick(static_cast<int>(Direction::LEFT));
+    for (int i = 0; i < 9; ++i)
+    {
+        game.tick(static_cast<int>(Direction::LEFT));
+        EXPECT_FALSE(game.isOver());
+    }
+    game.tick(static_cast<int>(Direction::LEFT));
+    EXPECT_TRUE(game.isOver());
+}
+
+TEST(SnakeGameTest, TickGameOverBottomWall)
+{
+    SnakeGame game(20, 20);
+    game.tick(static_cast<int>(Direction::DOWN));
+    for (int i = 0; i < 8; ++i)
+    {
+        game.tick(static_cast<int>(Direction::DOWN));
+        EXPECT_FALSE(game.isOver());
+    }
+    game.tick(static_cast<int>(Direction::DOWN));
+    EXPECT_TRUE(game.isOver());
+}
+
 TEST(SnakeGameTest, TickOnGameOverNoCrash)
 {
     SnakeGame game(20, 20);
     for (int i = 0; i < 12; ++i)
         game.tick(static_cast<int>(Direction::RIGHT));
     EXPECT_TRUE(game.isOver());
-    // Additional ticks after game over should not crash
+    int final_score = game.score();
     game.tick(static_cast<int>(Direction::RIGHT));
     game.tick(static_cast<int>(Direction::DOWN));
     EXPECT_TRUE(game.isOver());
-    EXPECT_EQ(game.score(), 0);
+    EXPECT_EQ(game.score(), final_score);
 }
 
 TEST(SnakeGameTest, TickReverseDirection)
 {
-    // Reverse direction from tick is silently ignored
     SnakeGame game(20, 20);
-    game.tick(static_cast<int>(Direction::LEFT));   // LEFT is reverse of initial RIGHT → ignored
+    game.tick(static_cast<int>(Direction::LEFT));
     EXPECT_FALSE(game.isOver());
 }
 
@@ -385,14 +432,11 @@ TEST(SnakeGameTest, MultipleTicks)
     game.tick(static_cast<int>(Direction::DOWN));
     for (int i = 0; i < 5; ++i)
         game.tick(static_cast<int>(Direction::DOWN));
-    // Snake went right 5, down 6 → should not hit wall yet
     EXPECT_FALSE(game.isOver());
 }
 
 TEST(SnakeGameTest, TickCumulativeScore)
 {
-    // Score only increases when eating food (random position).
-    // We can't control food position but we can verify tick doesn't corrupt score.
     SnakeGame game(20, 20);
     EXPECT_EQ(game.score(), 0);
     game.tick(static_cast<int>(Direction::RIGHT));
@@ -402,10 +446,105 @@ TEST(SnakeGameTest, TickCumulativeScore)
 TEST(SnakeGameTest, ScorePreservedAfterGameOver)
 {
     SnakeGame game(10, 10);
-    // Snake 10x10, starts at (5,5) going RIGHT → hits wall at x=10 after ~5 ticks
     for (int i = 0; i < 10; ++i)
         game.tick(static_cast<int>(Direction::RIGHT));
     int final_score = game.score();
-    game.tick(static_cast<int>(Direction::RIGHT));  // tick after game over
+    game.tick(static_cast<int>(Direction::RIGHT));
     EXPECT_EQ(game.score(), final_score);
+}
+
+TEST(SnakeGameTest, GetStateStructure)
+{
+    SnakeGame game(20, 15);
+    std::string state = game.getState();
+    auto val = boost::json::parse(state);
+    EXPECT_TRUE(val.is_object());
+    auto& obj = val.as_object();
+    EXPECT_EQ(obj["type"].as_string(), std::string("snake"));
+    EXPECT_EQ(obj["w"].as_int64(), 20);
+    EXPECT_EQ(obj["h"].as_int64(), 15);
+    EXPECT_EQ(obj["score"].as_int64(), 0);
+    EXPECT_EQ(obj["over"].as_bool(), false);
+    EXPECT_TRUE(obj.contains("grid"));
+    EXPECT_FALSE(obj["grid"].as_string().empty());
+}
+
+TEST(SnakeGameTest, GetStateAfterGameOver)
+{
+    SnakeGame game(10, 10);
+    for (int i = 0; i < 10; ++i)
+        game.tick(static_cast<int>(Direction::RIGHT));
+    EXPECT_TRUE(game.isOver());
+
+    std::string state = game.getState();
+    auto val = boost::json::parse(state);
+    EXPECT_TRUE(val.as_object()["over"].as_bool());
+}
+
+// ====== C API ======
+
+extern "C" {
+    void* app_create(const char* config_json);
+    void  app_destroy(void* p);
+    char* app_process(void* p, const char* input_json);
+    void  app_free_string(char* s);
+    int   app_is_done(void* p);
+}
+
+TEST(SnakeGameTest, CApi)
+{
+    void* app = app_create(nullptr);
+    ASSERT_NE(app, nullptr);
+    EXPECT_EQ(app_is_done(app), 0);
+
+    char* s = app_process(app, R"({"action":"new_game","width":20,"height":20})");
+    ASSERT_NE(s, nullptr);
+    std::string state(s);
+    EXPECT_NE(state.find("\"snake\""), std::string::npos);
+    app_free_string(s);
+
+    s = app_process(app, R"({"action":"tick","value":0})");
+    ASSERT_NE(s, nullptr);
+    state = std::string(s);
+    EXPECT_NE(state.find("\"grid\""), std::string::npos);
+    app_free_string(s);
+
+    app_destroy(app);
+}
+
+TEST(SnakeGameTest, CApiMultipleCreateDestroy)
+{
+    for (int i = 0; i < 5; ++i)
+    {
+        void* app = app_create(nullptr);
+        ASSERT_NE(app, nullptr);
+        EXPECT_EQ(app_is_done(app), 0);
+        app_destroy(app);
+    }
+}
+
+TEST(SnakeGameTest, CApiProcessInvalidJson)
+{
+    void* app = app_create(nullptr);
+    ASSERT_NE(app, nullptr);
+    char* s = app_process(app, "not json");
+    ASSERT_NE(s, nullptr);
+    std::string state(s);
+    app_free_string(s);
+    app_destroy(app);
+}
+
+TEST(SnakeGameTest, CApiMultipleTicks)
+{
+    void* app = app_create(nullptr);
+    ASSERT_NE(app, nullptr);
+    EXPECT_EQ(app_is_done(app), 0);
+
+    for (int i = 0; i < 5; ++i)
+    {
+        char* s = app_process(app, R"({"action":"tick","value":0})");
+        ASSERT_NE(s, nullptr);
+        app_free_string(s);
+    }
+    app_destroy(app);
 }

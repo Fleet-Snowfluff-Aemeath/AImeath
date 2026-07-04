@@ -1,52 +1,82 @@
 cmake_minimum_required(VERSION 3.12)
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     project(agent LANGUAGES CXX)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../core ${CMAKE_BINARY_DIR}/core)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../app ${CMAKE_BINARY_DIR}/app)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../llm ${CMAKE_BINARY_DIR}/llm)
 endif()
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output/lib)
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output/lib)
-
-set(BOOST_ROOT "/usr/local/boost_1_91" CACHE PATH "Boost installation root directory (clear to search system paths)")
+find_package(Boost 1.91 REQUIRED COMPONENTS json)
 if(BOOST_ROOT AND NOT EXISTS "${BOOST_ROOT}")
     set(BOOST_ROOT "" CACHE PATH "Boost installation root directory (clear to search system paths)" FORCE)
 endif()
-find_package(Boost REQUIRED COMPONENTS json)
 
-add_library(agent SHARED
-    src/agent_server.cpp
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output/lib)
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output/lib)
+
+file(GLOB SRC_SOURCES CONFIGURE_DEPENDS
+    src/*.cpp
 )
-target_include_directories(agent PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
-
-if(TARGET core)
-    target_link_libraries(agent PRIVATE core)
-    target_include_directories(agent PRIVATE ${CMAKE_SOURCE_DIR}/module/core/include)
-endif()
-
-if(TARGET app)
-    target_link_libraries(agent PUBLIC app)
-    target_include_directories(agent PRIVATE ${CMAKE_SOURCE_DIR}/module/app/include)
-endif()
-
-if(TARGET llm)
-    target_link_libraries(agent PRIVATE llm)
-    target_include_directories(agent PRIVATE ${CMAKE_SOURCE_DIR}/module/llm/include)
-endif()
+add_library(agent SHARED ${SRC_SOURCES})
+target_include_directories(agent PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../core/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../app/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../llm/include
+)
+target_link_libraries(agent PUBLIC Boost::json core app llm)
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 find_package(GTest REQUIRED)
-add_executable(tests
-    test/agent_test.cpp
+find_package(GTest REQUIRED)
+file(GLOB TEST_SOURCES CONFIGURE_DEPENDS
+    test/*.cpp
 )
+add_executable(tests ${TEST_SOURCES})
 set_target_properties(tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output/test)
 target_link_libraries(tests agent GTest::GTest GTest::Main)
 target_include_directories(tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+add_custom_target(run_tests
+    COMMAND ${CMAKE_COMMAND} -E env LD_LIBRARY_PATH=${CMAKE_BINARY_DIR}/output/lib $<TARGET_FILE:tests>
+    DEPENDS tests
+)
 
 find_package(benchmark REQUIRED)
-add_executable(bench_agent benchmark/agent_bench.cpp)
-set_target_properties(bench_agent PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output/bench)
-target_link_libraries(bench_agent agent benchmark::benchmark)
-target_include_directories(bench_agent PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+# ===================== 1. 定义基准测试通用函数 =====================
+function(add_benchmark target src)
+    add_executable(${target} ${src})
+    set_target_properties(${target} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output/bench)
+    target_link_libraries(${target} PRIVATE agent benchmark::benchmark)
+    target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+endfunction()
+
+# ===================== 2. 自动扫描 + 批量创建测试程序 =====================
+file(GLOB BENCH_SOURCES CONFIGURE_DEPENDS benchmark/*.cpp)
+set(BENCH_TARGETS "")
+
+# 循环创建所有bench目标
+foreach(bench_src ${BENCH_SOURCES})
+    get_filename_component(bench_name ${bench_src} NAME_WE)
+    set(target_name "${bench_name}")
+    add_benchmark(${target_name} ${bench_src})
+    list(APPEND BENCH_TARGETS ${target_name})
+endforeach()
+
+# ===================== 3. 单独处理特殊依赖 ================================
+
+# ===================== 4. 自动拼接运行命令（修复语法错误） =====================
+set(BENCH_COMMANDS "")
+foreach(target ${BENCH_TARGETS})
+    list(APPEND BENCH_COMMANDS COMMAND ${CMAKE_COMMAND} -E env LD_LIBRARY_PATH=${CMAKE_BINARY_DIR}/output/lib $<TARGET_FILE:${target}> --benchmark_min_time=0.1)
+endforeach()
+
+# 自定义目标：一键编译+运行所有基准测试
+add_custom_target(run_bench
+    ${BENCH_COMMANDS}
+    DEPENDS ${BENCH_TARGETS}
+    COMMENT "Running all benchmarks..."
+)
 endif()
