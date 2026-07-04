@@ -107,6 +107,7 @@ private:
     bool writing_ = false;
     bool closing_ = false;
     bool user_close_ = false;
+    bool close_after_write_ = false;
 
     asio::steady_timer ping_timer_;
     std::chrono::seconds ping_interval_;

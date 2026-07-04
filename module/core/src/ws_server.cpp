@@ -64,7 +64,11 @@ void Session::enqueue(std::string json)
 
 void Session::do_write()
 {
-    if (write_queue_.empty()) { writing_ = false; return; }
+    if (write_queue_.empty()) {
+        writing_ = false;
+        if (close_after_write_ && !closing_) close_ws();
+        return;
+    }
     if (closing_) { writing_ = false; return; }
     writing_ = true;
     auto self = shared_from_this();
@@ -242,7 +246,6 @@ void Session::route_and_setup()
                 mod_.app_set_output(app_.get(), &Session::app_output_cb, this);
                 if (mod_.app_set_io_context)
                     mod_.app_set_io_context(app_.get(), io_ctx_);
-                mod_.app_on_input(app_.get(), first_msg_.c_str());
                 do_read();
             } else {
                 do_read();
@@ -347,7 +350,11 @@ void Session::on_read(beast::error_code /*ec*/, std::size_t /*n*/)
         mod_.app_on_input(app_.get(), msg.c_str());
         if (app_is_done()) {
             logger_.info() << "[sess:" << this << "] app done, closing";
-            close_ws();
+            boost::json::object done;
+            done["type"] = "app_exited";
+            if (!window_id_.empty()) done["window_id"] = window_id_;
+            enqueue(boost::json::serialize(done));
+            close_after_write_ = true;
         } else {
             do_read();
         }
