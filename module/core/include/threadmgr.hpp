@@ -16,10 +16,13 @@ public:
     ~ThreadPool();
 
     void submit(std::function<void()> func);
+    bool try_submit(std::function<void()> func);
     void wait_all();
     size_t active_count() const;
     void shutdown();
     size_t get_task_count() const;
+    void set_max_queue_size(size_t max_size) { m_max_queue = max_size; }
+    size_t max_queue_size() const { return m_max_queue; }
 
     boost::asio::io_context& io_context() { return m_io; }
 
@@ -30,6 +33,7 @@ private:
 
     std::atomic<size_t> m_active{0};
     std::atomic<size_t> m_pending{0};
+    size_t m_max_queue{0};
 
     mutable std::mutex m_mtx;
     std::condition_variable m_done;

@@ -64,6 +64,7 @@ import { ref, computed, nextTick, onBeforeUnmount, onMounted } from 'vue'
 import { marked } from 'marked'
 import mermaid from 'mermaid'
 import { createChannel } from '../../../src/services/channel.js'
+import { getWsUrl } from '../../../src/services/config.js'
 
 mermaid.initialize({
   startOnLoad: false,
@@ -72,7 +73,7 @@ mermaid.initialize({
   securityLevel: 'loose',
 })
 
-const WS_URL = `ws://${location.hostname}:3001/chat`
+const WS_URL = getWsUrl('/chat')
 const WID = new URLSearchParams(location.search).get('wid') || ''
 const DNAME = decodeURIComponent(new URLSearchParams(location.search).get('name') || '')
 

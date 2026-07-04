@@ -11,6 +11,8 @@ Session::Session(tcp::socket socket, Logger& logger,
     , io_ctx_(io_ctx)
     , strand_(io_ctx->get_executor())
     , port_(port)
+    , ping_timer_(*io_ctx)
+    , ping_interval_(std::chrono::seconds(Config::instance().pingIntervalSec()))
 {
     stream_.emplace(std::move(socket));
     static int seq = 0;
@@ -22,6 +24,8 @@ Session::Session(tcp::socket socket, Logger& logger,
 
 Session::~Session()
 {
+    if (connection_count_)
+        connection_count_->fetch_sub(1, std::memory_order_release);
     if (closing_) return;
     if (!app_name_.empty()) {
         Config::instance().sessionRegistry().unregisterSession(app_name_, this);
@@ -43,6 +47,7 @@ void Session::start()
 void Session::on_app_output(const char* json)
 {
     if (closing_) return;
+    reset_heartbeat();
     asio::post(strand_,
         [self = shared_from_this(), s = std::string(json)]() {
             if (self->closing_) return;
@@ -59,7 +64,11 @@ void Session::enqueue(std::string json)
 
 void Session::do_write()
 {
-    if (write_queue_.empty()) { writing_ = false; return; }
+    if (write_queue_.empty()) {
+        writing_ = false;
+        if (close_after_write_ && !closing_) close_ws();
+        return;
+    }
     if (closing_) { writing_ = false; return; }
     writing_ = true;
     auto self = shared_from_this();
@@ -112,6 +121,7 @@ void Session::do_ws_accept()
             hs["id"] = self->session_id_;
             self->enqueue(boost::json::serialize(hs));
             self->buf_.clear();
+            self->schedule_ping();
             self->do_read_first_msg();
         }));
 }
@@ -180,6 +190,7 @@ void Session::do_read_first_msg()
 void Session::route_and_setup()
 {
     std::string app_name;
+    std::string action;
     try {
         auto val = boost::json::parse(first_msg_);
         if (val.is_object()) {
@@ -191,6 +202,10 @@ void Session::route_and_setup()
             auto dnIt = obj.find("display_name");
             if (dnIt != obj.end() && dnIt->value().is_string())
                 display_name_ = std::string(dnIt->value().as_string());
+
+            auto actIt = obj.find("action");
+            if (actIt != obj.end() && actIt->value().is_string())
+                action = std::string(actIt->value().as_string());
 
             std::string s = jsonParseStr(val, key::APP);
             if (!s.empty()) {
@@ -204,6 +219,48 @@ void Session::route_and_setup()
             }
         }
     } catch (...) {}
+
+    if (action == "resume") {
+        if (window_id_.empty()) {
+            enqueue(jsonError("resume requires window_id"));
+            close_ws();
+            return;
+        }
+        AppPtr restoredApp;
+        AppModule restoredMod;
+        std::string restoredName;
+        auto& reg = Config::instance().sessionRegistry();
+        if (reg.restoreApp(window_id_, restoredApp, restoredMod, restoredName)) {
+            logger_.info() << "Restored app " << restoredName << " from " << window_id_;
+            app_ = std::move(restoredApp);
+            mod_ = std::move(restoredMod);
+            app_name_ = restoredName;
+
+            reg.registerSession(app_name_, shared_from_this());
+            reg.registerWindow(window_id_, session_id_, app_name_);
+
+            if (app_is_done()) {
+                logger_.info() << "Restored app is already done, closing";
+                reg.removeStashedApp(window_id_);
+                enqueue(jsonError("restored app has ended"));
+                close_ws();
+                return;
+            }
+
+            if (mod_.is_async()) {
+                mod_.app_set_output(app_.get(), &Session::app_output_cb, this);
+                if (mod_.app_set_io_context)
+                    mod_.app_set_io_context(app_.get(), io_ctx_);
+                do_read();
+            } else {
+                do_read();
+            }
+            return;
+        }
+        enqueue(jsonError("cannot resume: session expired for " + window_id_));
+        close_ws();
+        return;
+    }
 
     logger_.info() << "Routing to app: " << app_name
                    << (window_id_.empty() ? "" : " wid:" + window_id_);
@@ -283,8 +340,13 @@ void Session::on_read(beast::error_code /*ec*/, std::size_t /*n*/)
     std::string msg = beast::buffers_to_string(buf_.data());
     buf_.clear();
 
+    reset_heartbeat();
+
     if (isCloseWindowMsg(msg)) {
         logger_.info() << "[sess:" << this << "] received close_window";
+        user_close_ = true;
+        if (!window_id_.empty())
+            Config::instance().sessionRegistry().removeStashedApp(window_id_);
         close_ws();
         return;
     }
@@ -293,7 +355,11 @@ void Session::on_read(beast::error_code /*ec*/, std::size_t /*n*/)
         mod_.app_on_input(app_.get(), msg.c_str());
         if (app_is_done()) {
             logger_.info() << "[sess:" << this << "] app done, closing";
-            close_ws();
+            boost::json::object done;
+            done["type"] = "app_exited";
+            if (!window_id_.empty()) done["window_id"] = window_id_;
+            enqueue(boost::json::serialize(done));
+            close_after_write_ = true;
         } else {
             do_read();
         }
@@ -306,6 +372,9 @@ void Session::process_legacy(const std::string& msg)
 {
     if (isCloseWindowMsg(msg)) {
         logger_.info() << "[sess:" << this << "] legacy close_window";
+        user_close_ = true;
+        if (!window_id_.empty())
+            Config::instance().sessionRegistry().removeStashedApp(window_id_);
         close_ws();
         return;
     }
@@ -314,7 +383,7 @@ void Session::process_legacy(const std::string& msg)
     auto mod  = &mod_;
     auto self = shared_from_this();
 
-    fallback_pool_->submit([self, msg, app, mod]() {
+    bool accepted = fallback_pool_->try_submit([self, msg, app, mod]() {
         char* out = mod->app_process(app, msg.c_str());
         if (out) {
             std::string results(out);
@@ -355,6 +424,11 @@ void Session::process_legacy(const std::string& msg)
             }
         });
     });
+
+    if (!accepted) {
+        enqueue(jsonError("server overloaded, please retry"));
+        do_read();
+    }
 }
 
 bool Session::app_is_done() const
@@ -398,7 +472,18 @@ std::string Session::call_app_process_and_notify(const std::string& input)
 void Session::do_cleanup()
 {
     closing_ = true;
-    if (!app_name_.empty()) {
+    ping_timer_.cancel();
+
+    bool stashed = false;
+    if (!window_id_.empty() && app_ && !user_close_ && !app_is_done()) {
+        auto& reg = Config::instance().sessionRegistry();
+        reg.stashApp(window_id_, std::move(app_), std::move(mod_), app_name_);
+        reg.unregisterSession(app_name_, this);
+        stashed = true;
+        logger_.info() << "[sess:" << this << "] app stashed for " << window_id_;
+    }
+
+    if (!stashed && !app_name_.empty()) {
         Config::instance().sessionRegistry().unregisterSession(app_name_, this);
         if (!window_id_.empty())
             Config::instance().sessionRegistry().unregisterWindow(window_id_);
@@ -423,6 +508,42 @@ void Session::close_ws()
     }
 }
 
+void Session::schedule_ping()
+{
+    if (closing_) return;
+    auto self = shared_from_this();
+    ping_timer_.expires_after(ping_interval_);
+    ping_timer_.async_wait(
+        asio::bind_executor(strand_, [self](beast::error_code ec) {
+            self->on_ping_timer(ec);
+        }));
+}
+
+void Session::on_ping_timer(beast::error_code ec)
+{
+    if (ec == asio::error::operation_aborted || closing_) return;
+
+    if (missed_pongs_ >= MAX_MISSED_PONGS) {
+        logger_.warn() << "[sess:" << this << "] heartbeat lost after "
+                       << MAX_MISSED_PONGS << " missed pongs, closing";
+        close_ws();
+        return;
+    }
+
+    missed_pongs_++;
+    if (ws_ && ws_->is_open()) {
+        ws_->async_ping("",
+            asio::bind_executor(strand_, [](beast::error_code) {}));
+    }
+
+    schedule_ping();
+}
+
+void Session::reset_heartbeat()
+{
+    missed_pongs_ = 0;
+}
+
 Listener::Listener(asio::io_context& io, Logger& logger,
                    IModuleCache& cache, ThreadPool* fallback_pool,
                    int port)
@@ -432,6 +553,7 @@ Listener::Listener(asio::io_context& io, Logger& logger,
     , cache_(cache)
     , fallback_pool_(fallback_pool)
     , port_(port)
+    , connection_count_(std::make_shared<std::atomic<size_t>>(0))
 {}
 
 void Listener::run()
@@ -450,16 +572,33 @@ void Listener::do_accept()
     auto self = shared_from_this();
     acceptor_.async_accept(
         [self](beast::error_code ec, tcp::socket socket) {
-            if (!ec) {
-                auto session = std::make_shared<Session>(
-                    std::move(socket), self->logger_,
-                    self->cache_, self->fallback_pool_,
-                    &self->io_, self->port_);
-                session->start();
-            } else if (ec != asio::error::operation_aborted) {
-                self->logger_.warn() << "accept error: " << ec.message();
-            }
-            if (ec != asio::error::operation_aborted)
-                self->do_accept();
+            self->on_accept(ec, std::move(socket));
         });
+}
+
+void Listener::on_accept(beast::error_code ec, tcp::socket socket)
+{
+    if (ec == asio::error::operation_aborted)
+        return;
+
+    if (!ec) {
+        if (max_connections_ > 0 && connection_count_->load() >= static_cast<size_t>(max_connections_)) {
+            logger_.warn() << "connection rejected: max connections (" << max_connections_ << ") reached";
+            beast::error_code ignore;
+            socket.close(ignore);
+        } else {
+            connection_count_->fetch_add(1, std::memory_order_release);
+            auto session = std::make_shared<Session>(
+                std::move(socket), logger_,
+                cache_, fallback_pool_,
+                &io_, port_);
+            session->set_connection_counter(connection_count_);
+            session->start();
+        }
+    } else if (ec != asio::error::operation_aborted) {
+        logger_.warn() << "accept error: " << ec.message();
+    }
+
+    if (ec != asio::error::operation_aborted)
+        do_accept();
 }

@@ -1,6 +1,7 @@
 import { createChannel } from './channel.js'
+import { getWsUrl } from './config.js'
 
-const WS_URL = `ws://${location.hostname}:3001`
+const WS_URL = getWsUrl()
 const WID = new URLSearchParams(location.search).get('wid') || ''
 const DNAME = decodeURIComponent(new URLSearchParams(location.search).get('name') || '')
 
@@ -8,7 +9,14 @@ export function createGameSocket(game, width = 20, height = 20) {
   const ch = createChannel(WS_URL, { maxRetries: 5 })
   const stateListeners = new Set()
 
-  ch.onOpen(() => {
+  ch.onOpen((isReconnect) => {
+    if (isReconnect) {
+      const p = { action: 'resume', game }
+      if (WID) p.window_id = WID
+      if (DNAME) p.display_name = DNAME
+      ch.send(p)
+      return
+    }
     const p = { action: 'new_game', game, width, height }
     if (WID) p.window_id = WID
     if (DNAME) p.display_name = DNAME

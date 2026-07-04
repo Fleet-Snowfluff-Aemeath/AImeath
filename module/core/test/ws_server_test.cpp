@@ -100,3 +100,37 @@ TEST(WsServerSessionTest, ConstructSessionWithNoFallbackPool)
         std::move(socket1), logger, cache, nullptr, &io, DEFAULT_PORT);
     EXPECT_NO_THROW(session->start());
 }
+
+TEST(WsServerListenerTest, ConnectionCountStartsAtZero)
+{
+    asio::io_context io;
+    Logger logger(Logger::WARN);
+    AppModuleCache cache;
+
+    auto listener = std::make_shared<Listener>(io, logger, cache, nullptr, 0);
+    EXPECT_EQ(listener->connection_count(), 0);
+    listener->shutdown();
+}
+
+TEST(WsServerListenerTest, MaxConnectionsDefaultsToZero)
+{
+    asio::io_context io;
+    Logger logger(Logger::WARN);
+    AppModuleCache cache;
+
+    auto listener = std::make_shared<Listener>(io, logger, cache, nullptr, 0);
+    EXPECT_EQ(listener->max_connections(), 0);
+    listener->shutdown();
+}
+
+TEST(WsServerListenerTest, SetMaxConnections)
+{
+    asio::io_context io;
+    Logger logger(Logger::WARN);
+    AppModuleCache cache;
+
+    auto listener = std::make_shared<Listener>(io, logger, cache, nullptr, 0);
+    listener->set_max_connections(100);
+    EXPECT_EQ(listener->max_connections(), 100);
+    listener->shutdown();
+}

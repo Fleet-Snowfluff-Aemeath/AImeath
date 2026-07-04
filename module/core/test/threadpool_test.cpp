@@ -168,3 +168,66 @@ TEST(ThreadPoolTest, ConcurrentSubmitStress)
     pool.wait_all();
     EXPECT_EQ(counter.load(), TASKS_PER_THREAD * THREADS);
 }
+
+TEST(ThreadPoolTest, TrySubmitSuccess)
+{
+    std::atomic<int> counter{0};
+    ThreadPool pool(2);
+    pool.set_max_queue_size(100);
+    for (int i = 0; i < 10; ++i)
+        EXPECT_TRUE(pool.try_submit([&]() { counter.fetch_add(1); }));
+    pool.wait_all();
+    EXPECT_EQ(counter.load(), 10);
+}
+
+TEST(ThreadPoolTest, TrySubmitRejectedWhenFull)
+{
+    ThreadPool pool(1);
+    pool.set_max_queue_size(2);
+    std::atomic<int> counter{0};
+    std::atomic<bool> barrier{true};
+    std::atomic<bool> started{false};
+
+    pool.submit([&]() {
+        started.store(true);
+        while (barrier.load()) { std::this_thread::sleep_for(std::chrono::milliseconds(10)); }
+        counter.fetch_add(1);
+    });
+
+    while (!started.load()) { std::this_thread::sleep_for(std::chrono::milliseconds(1)); }
+
+    bool r1 = pool.try_submit([&]() { counter.fetch_add(1); });
+    bool r2 = pool.try_submit([&]() { counter.fetch_add(1); });
+    bool r3 = pool.try_submit([&]() { counter.fetch_add(1); });
+
+    barrier.store(false);
+    pool.wait_all();
+
+    EXPECT_TRUE(r1);
+    EXPECT_TRUE(r2);
+    EXPECT_FALSE(r3);
+    EXPECT_EQ(counter.load(), 3);
+}
+
+TEST(ThreadPoolTest, MaxQueueSizeDefaultsToZero)
+{
+    ThreadPool pool(2);
+    EXPECT_EQ(pool.max_queue_size(), 0);
+}
+
+TEST(ThreadPoolTest, SetAndGetMaxQueueSize)
+{
+    ThreadPool pool(2);
+    pool.set_max_queue_size(42);
+    EXPECT_EQ(pool.max_queue_size(), 42);
+}
+
+TEST(ThreadPoolTest, TrySubmitAlwaysSucceedsWithNoLimit)
+{
+    ThreadPool pool(2);
+    std::atomic<int> counter{0};
+    for (int i = 0; i < 500; ++i)
+        EXPECT_TRUE(pool.try_submit([&]() { counter.fetch_add(1); }));
+    pool.wait_all();
+    EXPECT_EQ(counter.load(), 500);
+}

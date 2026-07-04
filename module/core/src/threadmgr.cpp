@@ -16,19 +16,27 @@ ThreadPool::~ThreadPool()
 
 void ThreadPool::submit(std::function<void()> func)
 {
-    m_pending.fetch_add(1);
+    m_pending.fetch_add(1, std::memory_order_release);
     boost::asio::post(m_io, [this, f = std::move(func)]() {
-        m_active.fetch_add(1);
+        m_pending.fetch_sub(1, std::memory_order_acquire);
+        m_active.fetch_add(1, std::memory_order_release);
         try { f(); } catch (...) {
             std::cerr << "ThreadPool: task exception caught" << std::endl;
         }
-        m_active.fetch_sub(1);
-        if (m_pending.fetch_sub(1) == 1)
+        if (m_active.fetch_sub(1, std::memory_order_release) == 1)
         {
             std::lock_guard<std::mutex> lock(m_mtx);
             if (m_waiting) m_done.notify_one();
         }
     });
+}
+
+bool ThreadPool::try_submit(std::function<void()> func)
+{
+    if (m_max_queue > 0 && m_pending.load() >= m_max_queue)
+        return false;
+    submit(std::move(func));
+    return true;
 }
 
 void ThreadPool::wait_all()

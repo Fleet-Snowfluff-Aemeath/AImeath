@@ -22,11 +22,12 @@ export function createChannel(url, options = {}) {
 
   function connect() {
     if (intentionalClose) return
+    const isReconnect = reconnectAttempts > 0
     ws = new WebSocket(url)
 
     ws.onopen = () => {
       reconnectAttempts = 0
-      openHandlers.forEach(fn => fn())
+      openHandlers.forEach(fn => fn(isReconnect))
     }
 
     ws.onmessage = (e) => {
