@@ -21,6 +21,8 @@ public:
 
     void init(IModuleCache* cache);
 
+    IModuleCache* cache() const { return cache_; }
+
     bool openApp(const std::string& appName, const std::string& configJson);
     bool closeApp(const std::string& appName);
     boost::json::value controlApp(const std::string& appName, const std::string& commandJson);

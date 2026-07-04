@@ -24,6 +24,7 @@
 #include "config.hpp"
 #include "ws_server.hpp"
 #include "iface_mod.hpp"
+#include "app_manager.hpp"
 
 namespace asio  = boost::asio;
 
@@ -675,9 +676,7 @@ void* app_create(const char* config_json)
     auto ptr = std::make_shared<ChatApp>();
     ptr->self_holder = ptr;
 
-    auto cachePtr = Config::instance().chatCachePtr();
-    if (cachePtr)
-        ptr->mod_cache = reinterpret_cast<IModuleCache*>(static_cast<uintptr_t>(cachePtr));
+    ptr->mod_cache = AppManager::instance().cache();
 
     return ptr.get();
 }

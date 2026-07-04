@@ -2,8 +2,9 @@ import { createChannel } from './channel.js'
 import { getWsUrl } from './config.js'
 
 const WS_URL = getWsUrl()
-const WID = new URLSearchParams(location.search).get('wid') || ''
-const DNAME = decodeURIComponent(new URLSearchParams(location.search).get('name') || '')
+const _hashQS = location.hash.includes('?') ? location.hash.split('?')[1] : ''
+const WID = new URLSearchParams(_hashQS).get('wid') || ''
+const DNAME = decodeURIComponent(new URLSearchParams(_hashQS).get('name') || '')
 
 export function createGameSocket(game, width = 20, height = 20) {
   const ch = createChannel(WS_URL, { maxRetries: 5 })

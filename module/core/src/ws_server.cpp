@@ -532,8 +532,11 @@ void Session::on_ping_timer(beast::error_code ec)
 
     missed_pongs_++;
     if (ws_ && ws_->is_open()) {
+        auto self = shared_from_this();
         ws_->async_ping("",
-            asio::bind_executor(strand_, [](beast::error_code) {}));
+            asio::bind_executor(strand_, [self](beast::error_code ec) {
+                if (!ec) self->missed_pongs_ = 0;
+            }));
     }
 
     schedule_ping();

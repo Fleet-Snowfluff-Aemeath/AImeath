@@ -50,7 +50,6 @@ int main()
 
     AppManager::instance().init(&cache);
 
-    Config::instance().setChatCachePtr(reinterpret_cast<uintptr_t>(&cache));
     Config::instance().sessionRegistry().setStashTtlSec(stash_ttl);
 
     auto listener = std::make_shared<Listener>(io, logger, cache, &fallback_pool, port);

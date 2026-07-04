@@ -760,8 +760,8 @@ boost::json::value AgentServer::executeTool(const std::string& name, const boost
 
         bool found = false;
         if (AppManager::instance().getAppState(appName).is_null()) {
-            auto mod = Config::instance().chatCachePtr()
-                ? reinterpret_cast<IModuleCache*>(static_cast<uintptr_t>(Config::instance().chatCachePtr()))->load(appName)
+            auto mod = AppManager::instance().cache()
+                ? AppManager::instance().cache()->load(appName)
                 : AppModule{};
             if (mod) {
                 auto handle = mod.create("{}");

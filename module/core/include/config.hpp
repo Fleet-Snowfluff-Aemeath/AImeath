@@ -74,9 +74,6 @@ public:
     int pingIntervalSec() const { return getInt("ping_interval_sec", 30); }
     int stashTtlSec() const { return getInt("stash_ttl_sec", 0); }
 
-    void setChatCachePtr(uintptr_t ptr) { chat_cache_ptr_ = ptr; }
-    uintptr_t chatCachePtr() const { return chat_cache_ptr_; }
-
     void setAppStateNotifyFn(void (*fn)(const char* app, const char* state, void* ctx), void* ctx) {
         state_notify_fn_ = fn;
         state_notify_ctx_ = ctx;
@@ -88,7 +85,6 @@ public:
     SessionRegistry& sessionRegistry() { return session_registry_; }
 
 private:
-    uintptr_t chat_cache_ptr_ = 0;
     void (*state_notify_fn_)(const char*, const char*, void*) = nullptr;
     void* state_notify_ctx_ = nullptr;
     SessionRegistry session_registry_;

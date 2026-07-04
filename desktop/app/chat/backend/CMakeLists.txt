@@ -3,6 +3,7 @@ set(PROJ_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../../../../)
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     project(chat LANGUAGES CXX)
     add_subdirectory(${PROJ_ROOT}/module/core ${CMAKE_BINARY_DIR}/core)
+    add_subdirectory(${PROJ_ROOT}/module/app ${CMAKE_BINARY_DIR}/app)
     add_subdirectory(${PROJ_ROOT}/module/llm ${CMAKE_BINARY_DIR}/llm)
 endif()
 
@@ -27,7 +28,7 @@ target_include_directories(chat PRIVATE
     ${PROJ_ROOT}/module/app/include
 )
 
-target_link_libraries(chat PRIVATE Boost::json OpenSSL::SSL OpenSSL::Crypto core llm)
+target_link_libraries(chat PRIVATE Boost::json OpenSSL::SSL OpenSSL::Crypto core app llm)
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 find_package(GTest REQUIRED)
