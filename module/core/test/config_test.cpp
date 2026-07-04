@@ -94,3 +94,34 @@ TEST_F(SessionRegistryTest, ListSessionsInitiallyEmpty)
 {
     EXPECT_TRUE(reg.listSessions().empty());
 }
+
+TEST(ConfigTest, IoThreadsUsesDefaultWhenNotInJson)
+{
+    auto& cfg = Config::instance();
+    int val = cfg.ioThreads();
+    EXPECT_GE(val, 4);
+}
+
+TEST(ConfigTest, FallbackThreadsUsesDefaultWhenNotInJson)
+{
+    auto& cfg = Config::instance();
+    int val = cfg.fallbackThreads();
+    EXPECT_GE(val, 4);
+}
+
+TEST(ConfigTest, MaxConnectionsDefaultsToZero)
+{
+    auto& cfg = Config::instance();
+    EXPECT_EQ(cfg.maxConnections(), 0);
+}
+
+TEST(ConfigTest, PingIntervalDefaultsTo30)
+{
+    auto& cfg = Config::instance();
+    EXPECT_EQ(cfg.pingIntervalSec(), 30);
+}
+
+TEST(ConfigTest, DefaultIoThreadsAtLeast4)
+{
+    EXPECT_GE(Config::defaultIoThreads(), 4);
+}

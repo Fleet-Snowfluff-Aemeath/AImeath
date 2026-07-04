@@ -11,6 +11,8 @@
 #include <memory>
 #include <deque>
 #include <optional>
+#include <atomic>
+#include <chrono>
 
 #include <boost/asio.hpp>
 #include <boost/beast/core.hpp>
@@ -55,6 +57,8 @@ public:
     std::string call_app_process(const std::string& input);
     std::string call_app_process_and_notify(const std::string& input);
 
+    void set_connection_counter(std::shared_ptr<std::atomic<size_t>> counter) { connection_count_ = std::move(counter); }
+
     const std::string& session_id() const { return session_id_; }
     const std::string& window_id() const { return window_id_; }
     void set_window_id(const std::string& wid) { window_id_ = wid; }
@@ -76,6 +80,9 @@ private:
     bool app_is_done() const;
     void close_ws();
     void do_cleanup();
+    void schedule_ping();
+    void on_ping_timer(beast::error_code ec);
+    void reset_heartbeat();
 
     std::optional<beast::tcp_stream>                          stream_;
     std::optional<websocket::stream<beast::tcp_stream>>       ws_;
@@ -99,6 +106,13 @@ private:
     std::deque<std::string> write_queue_;
     bool writing_ = false;
     bool closing_ = false;
+    bool user_close_ = false;
+
+    asio::steady_timer ping_timer_;
+    std::chrono::seconds ping_interval_;
+    int missed_pongs_{0};
+    static constexpr int MAX_MISSED_PONGS = 2;
+    std::shared_ptr<std::atomic<size_t>> connection_count_;
 };
 
 class Listener : public std::enable_shared_from_this<Listener>
@@ -109,12 +123,16 @@ public:
              int port = DEFAULT_PORT);
 
     int port() const { return port_; }
+    size_t connection_count() const { return connection_count_->load(); }
+    void set_max_connections(int max) { max_connections_ = max; }
+    int max_connections() const { return max_connections_; }
 
     void run();
     void shutdown();
 
 private:
     void do_accept();
+    void on_accept(beast::error_code ec, tcp::socket socket);
 
     asio::io_context& io_;
     tcp::acceptor    acceptor_;
@@ -122,4 +140,6 @@ private:
     IModuleCache&  cache_;
     ThreadPool*      fallback_pool_;
     int              port_;
+    int              max_connections_{0};
+    std::shared_ptr<std::atomic<size_t>> connection_count_;
 };

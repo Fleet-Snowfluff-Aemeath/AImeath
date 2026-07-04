@@ -6,8 +6,10 @@
 #include <memory>
 #include <mutex>
 #include <utility>
+#include <thread>
 #include <boost/json.hpp>
 #include <boost/noncopyable.hpp>
+#include "iface_mod.hpp"
 
 class Session;
 
@@ -24,6 +26,11 @@ public:
     void unregisterWindow(const std::string& windowId);
     boost::json::array listActiveWindows();
 
+    void stashApp(const std::string& windowId, AppPtr app, AppModule mod, std::string appName);
+    bool restoreApp(const std::string& windowId, AppPtr& outApp, AppModule& outMod, std::string& outAppName);
+    void removeStashedApp(const std::string& windowId);
+    void setStashTtlSec(int ttl) { stashTtlSec_ = ttl; }
+
 private:
     std::mutex mtx_;
     std::map<std::string, std::vector<std::weak_ptr<Session>>> sessions_;
@@ -32,6 +39,15 @@ private:
         std::string appName;
     };
     std::map<std::string, WinInfo> windowMap_;
+
+    struct StashedApp {
+        AppPtr app;
+        AppModule mod;
+        std::string appName;
+        std::chrono::steady_clock::time_point at;
+    };
+    std::map<std::string, StashedApp> stashedApps_;
+    int stashTtlSec_{0};
 };
 
 class Config : private boost::noncopyable
@@ -46,8 +62,17 @@ public:
     //     and centralize default-value knowledge.
     int port() const { return getInt("port", 3001); }
     std::string deepSeekApiKey() const { return getString("deepseek_api_key"); }
-    std::string gitToken() const { return getString("git_token"); }
     std::string fileRoot() const { return getString("file_root", "desktop/public/home"); }
+
+    static int defaultIoThreads() {
+        unsigned n = std::thread::hardware_concurrency();
+        return n > 0 ? static_cast<int>(n) : 4;
+    }
+    int ioThreads() const { return getInt("io_threads", defaultIoThreads()); }
+    int fallbackThreads() const { return getInt("fallback_threads", defaultIoThreads()); }
+    int maxConnections() const { return getInt("max_connections", 0); }
+    int pingIntervalSec() const { return getInt("ping_interval_sec", 30); }
+    int stashTtlSec() const { return getInt("stash_ttl_sec", 0); }
 
     void setChatCachePtr(uintptr_t ptr) { chat_cache_ptr_ = ptr; }
     uintptr_t chatCachePtr() const { return chat_cache_ptr_; }

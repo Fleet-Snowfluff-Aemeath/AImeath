@@ -1,6 +1,7 @@
 import { createChannel } from '../../../src/services/channel.js'
+import { getWsUrl } from '../../../src/services/config.js'
 
-const WS_URL = `ws://${location.hostname}:3001`
+const WS_URL = getWsUrl()
 const WID = new URLSearchParams(location.search).get('wid') || ''
 const DNAME = decodeURIComponent(new URLSearchParams(location.search).get('name') || '')
 

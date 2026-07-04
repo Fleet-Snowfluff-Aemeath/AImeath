@@ -107,6 +107,42 @@ void SessionRegistry::unregisterWindow(const std::string& windowId)
     windowMap_.erase(windowId);
 }
 
+void SessionRegistry::stashApp(const std::string& windowId, AppPtr app, AppModule mod, std::string appName)
+{
+    if (windowId.empty()) return;
+    std::lock_guard<std::mutex> lock(mtx_);
+    StashedApp s;
+    s.app = std::move(app);
+    s.mod = std::move(mod);
+    s.appName = std::move(appName);
+    s.at = std::chrono::steady_clock::now();
+    stashedApps_[windowId] = std::move(s);
+}
+
+bool SessionRegistry::restoreApp(const std::string& windowId, AppPtr& outApp, AppModule& outMod, std::string& outAppName)
+{
+    if (windowId.empty()) return false;
+    std::lock_guard<std::mutex> lock(mtx_);
+    auto it = stashedApps_.find(windowId);
+    if (it == stashedApps_.end()) return false;
+    if (stashTtlSec_ > 0 && std::chrono::steady_clock::now() - it->second.at > std::chrono::seconds(stashTtlSec_)) {
+        stashedApps_.erase(it);
+        return false;
+    }
+    outApp = std::move(it->second.app);
+    outMod = std::move(it->second.mod);
+    outAppName = std::move(it->second.appName);
+    stashedApps_.erase(it);
+    return true;
+}
+
+void SessionRegistry::removeStashedApp(const std::string& windowId)
+{
+    if (windowId.empty()) return;
+    std::lock_guard<std::mutex> lock(mtx_);
+    stashedApps_.erase(windowId);
+}
+
 boost::json::array SessionRegistry::listActiveWindows()
 {
     std::lock_guard<std::mutex> lock(mtx_);

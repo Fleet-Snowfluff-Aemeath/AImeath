@@ -28,23 +28,34 @@ int main()
 {
     Logger logger(std::cout, Logger::INFO);
 
-    // L1: Config singleton loaded once; port() defaults to 3001 if missing.
     int port = Config::instance().port();
-    logger.info() << "Loaded port from config.json: " << port;
+    int io_threads = Config::instance().ioThreads();
+    int fb_threads = Config::instance().fallbackThreads();
+    int max_conn = Config::instance().maxConnections();
+    int stash_ttl = Config::instance().stashTtlSec();
+    logger.info() << "Port: " << port
+                  << " IO threads: " << io_threads
+                  << " Fallback threads: " << fb_threads
+                  << " Max connections: " << (max_conn > 0 ? std::to_string(max_conn) : "unlimited")
+                  << " Stash TTL: " << (stash_ttl > 0 ? std::to_string(stash_ttl) + "s" : "unlimited");
 
-    ThreadPool io_pool(DEFAULT_IO_THREADS);
+    ThreadPool io_pool(io_threads);
     auto& io = io_pool.io_context();
 
-    ThreadPool fallback_pool(DEFAULT_FALLBACK_THREADS);
+    ThreadPool fallback_pool(fb_threads);
+    if (max_conn > 0) {
+        fallback_pool.set_max_queue_size(static_cast<size_t>(max_conn) / 10);
+    }
     AppModuleCache cache;
 
-    // 初始化 AppManager
     AppManager::instance().init(&cache);
 
-    // 将 cache 地址注入 chat 模块的 config，使 agent 能通过 cache 加载其他 app
     Config::instance().setChatCachePtr(reinterpret_cast<uintptr_t>(&cache));
+    Config::instance().sessionRegistry().setStashTtlSec(stash_ttl);
 
     auto listener = std::make_shared<Listener>(io, logger, cache, &fallback_pool, port);
+    if (max_conn > 0)
+        listener->set_max_connections(max_conn);
     listener->run();
 
     asio::io_context sig_io;

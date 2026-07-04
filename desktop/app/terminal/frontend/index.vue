@@ -7,8 +7,9 @@ import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { Terminal } from 'xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import 'xterm/css/xterm.css'
+import { getWsUrl } from '../../../src/services/config.js'
 
-const WS_URL = `ws://${location.hostname}:3001`
+const WS_URL = getWsUrl()
 const BASE = 'desktop/public/home'
 const WID = new URLSearchParams(location.search).get('wid') || ''
 const DNAME = decodeURIComponent(new URLSearchParams(location.search).get('name') || '')
