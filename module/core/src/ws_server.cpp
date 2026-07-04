@@ -220,7 +220,12 @@ void Session::route_and_setup()
         }
     } catch (...) {}
 
-    if (action == "resume" && !window_id_.empty()) {
+    if (action == "resume") {
+        if (window_id_.empty()) {
+            enqueue(jsonError("resume requires window_id"));
+            close_ws();
+            return;
+        }
         AppPtr restoredApp;
         AppModule restoredMod;
         std::string restoredName;
