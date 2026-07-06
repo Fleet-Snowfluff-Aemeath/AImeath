@@ -757,16 +757,24 @@ static void handleUserMessageAsync(ChatApp* app, const std::string& text, const 
                 mergedList.push_back(kv.second);
             processToolCalls(app, mergedList, response, reasoning);
         } else {
-            {
-                std::lock_guard<std::mutex> lock(app->mtx);
-                boost::json::object am;
-                am["role"] = "assistant";
-                am["sender_name"] = "AI助手";
-                am["sender_avatar"] = app->current_sender_avatar;
-                if (!response.empty()) am["content"] = response;
-                if (!reasoning.empty()) am["reasoning_content"] = reasoning;
-                if (!response.empty() || !reasoning.empty())
-                    app->history.push_back(std::move(am));
+            boost::json::object am;
+            am["role"] = "assistant";
+            am["sender_name"] = "AI助手";
+            am["sender_avatar"] = app->current_sender_avatar;
+            if (!response.empty()) am["content"] = response;
+            if (!reasoning.empty()) am["reasoning_content"] = reasoning;
+            if (!response.empty() || !reasoning.empty()) {
+                if (!app->agents.empty()) {
+                    app->agents[0]->setResponseCallback([app](boost::json::object msg) {
+                        app->push_output(msg);
+                        std::lock_guard<std::mutex> lock(app->mtx);
+                        app->history.push_back(std::move(msg));
+                    });
+                } else {
+                    std::lock_guard<std::mutex> lock(app->mtx);
+                    app->history.push_back(boost::json::object(am));
+                }
+                app->push_output(std::move(am));
             }
         }
     });
@@ -915,6 +923,22 @@ void* app_create(const char* config_json)
     auto cachePtr = Config::instance().chatCachePtr();
     if (cachePtr)
         ptr->mod_cache = reinterpret_cast<IModuleCache*>(static_cast<uintptr_t>(cachePtr));
+
+    try {
+        auto mainAi = agent::createAgentFromProfile(std::string(PROJ_ROOT) + "/module/agent/config/default.yml");
+        mainAi->setResponseCallback([raw = ptr](boost::json::object msg) {
+            if (raw->cancelled) return;
+            boost::json::object out;
+            out["type"] = "agent_msg";
+            out["sender_name"] = msg["sender_name"];
+            out["sender_avatar"] = msg["sender_avatar"];
+            out["content"] = msg["content"];
+            raw->push_output(std::move(out));
+            std::lock_guard<std::mutex> lock(raw->mtx);
+            raw->history.push_back(std::move(msg));
+        });
+        ptr->agents.push_back(std::move(mainAi));
+    } catch (...) {}
 
     return ptr.get();
 }
