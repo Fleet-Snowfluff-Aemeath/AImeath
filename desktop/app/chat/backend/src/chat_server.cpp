@@ -939,6 +939,7 @@ void* app_create(const char* config_json)
     try {
         auto mainAi = agent::AgentManager::instance().createFromYaml(
             std::string(PROJ_ROOT) + "/module/agent/config/default.yml");
+        ptr->current_sender_name = mainAi->getName();
         auto mainAiId = agent::AgentManager::instance().allocId();
         agent::AgentManager::instance().joinChat(mainAiId, ptr->chatId, agent::ChatType::GROUP);
         mainAi->setResponseCallback([raw = ptr.get()](boost::json::object msg) {
