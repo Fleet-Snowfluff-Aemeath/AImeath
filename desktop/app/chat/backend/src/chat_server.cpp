@@ -48,6 +48,7 @@ namespace asio  = boost::asio;
 struct ChatApp;
 static void processNextInQueue(ChatApp* app);
 static void handleUserMessageAsync(ChatApp* app, const std::string& text, const std::string& sender_name = "用户");
+static std::string executeTool(ChatApp* app, const std::string& name, const std::string& argsJson);
 static void processToolCalls(ChatApp* app,
     const std::vector<LlmToolCall>& mergedList,
     const std::string& response,
@@ -203,6 +204,9 @@ static boost::json::array handleCommand(ChatApp* app, const std::string& text)
             for (auto& a : agents) {
                 if (a->getName() == agentName) {
                     if (app->io_ctx_ptr) a->setIoContext(app->io_ctx_ptr);
+                    a->setToolExecutor([app](const std::string& name, const std::string& args) -> std::string {
+                        return executeTool(app, name, args);
+                    });
                     a->setStreamCallback([app](boost::json::object ev) {
                         if (app->cancelled) return;
                         app->push_output(std::move(ev));
@@ -335,6 +339,138 @@ static AppInstance* ensureAppInstance(ChatApp* app, const std::string& name)
         ref = std::move(inst);
         return &app->instances[name];
     } catch (...) { return nullptr; }
+}
+
+static std::string executeTool(ChatApp* app, const std::string& name, const std::string& argsJson) {
+    try {
+        auto args = boost::json::parse(argsJson);
+        if (!args.is_object()) return R"({"success":false,"msg":"invalid args"})";
+        auto& a = args.as_object();
+
+        if (name == "open_app") {
+            std::string appName = a["app"].as_string().c_str();
+            auto sess = Config::instance().sessionRegistry().findSession(appName, 0);
+            if (!sess) app->instances.erase(appName);
+            ensureAppInstance(app, appName);
+            boost::json::object agentMsg;
+            agentMsg["type"] = "agent";
+            agentMsg["action"] = "open_app";
+            agentMsg["app"] = appName;
+            if (a.contains("width")) agentMsg["width"] = a["width"];
+            if (a.contains("height")) agentMsg["height"] = a["height"];
+            app->push_output(std::move(agentMsg));
+            return R"({"success":true,"msg":"opened )" + appName + "\"}";
+        }
+        if (name == "control_app") {
+            std::string appName = a["app"].as_string().c_str();
+            int instance = a.contains("instance") ? static_cast<int>(a["instance"].as_int64()) : 0;
+            int value = -1;
+            if (a.contains("coord")) {
+                auto& coord = a["coord"].as_array();
+                value = static_cast<int>(coord[0].as_int64()) * 20 + static_cast<int>(coord[1].as_int64());
+            } else if (a.contains("value")) {
+                value = static_cast<int>(a["value"].as_int64());
+            }
+            boost::json::object cmd;
+            cmd["action"] = "tick";
+            cmd["value"] = value;
+            auto sess = Config::instance().sessionRegistry().findSession(appName, instance);
+            std::string result;
+            if (sess) result = sess->call_app_process_and_notify(boost::json::serialize(cmd));
+            else app->instances.erase(appName);
+            if (result.empty()) result = "[]";
+            return R"({"success":true,"result":)" + result + "}";
+        }
+        if (name == "close_app") {
+            std::string appName = a["app"].as_string().c_str();
+            app->instances.erase(appName);
+            boost::json::object agentMsg;
+            agentMsg["type"] = "agent"; agentMsg["action"] = "close_app"; agentMsg["app"] = appName;
+            app->push_output(std::move(agentMsg));
+            return R"({"success":true,"msg":"closed )" + appName + "\"}";
+        }
+        if (name == "get_app_state") {
+            std::string appName = a["app"].as_string().c_str();
+            int instance = a.contains("instance") ? static_cast<int>(a["instance"].as_int64()) : 0;
+            auto sess = Config::instance().sessionRegistry().findSession(appName, instance);
+            if (sess) {
+                std::string state = sess->call_app_process(R"({"action":"get_state"})");
+                return R"({"success":true,"state":)" + state + "}";
+            }
+            return R"({"success":false,"msg":"no instance"})";
+        }
+        if (name == "list_apps" || name == "list_active_windows") {
+            auto all = Config::instance().sessionRegistry().listSessions();
+            std::map<std::string, int> counts;
+            for (auto& [n, idx] : all) counts[n] = std::max(counts[n], idx + 1);
+            boost::json::object info;
+            info["total"] = static_cast<int64_t>(all.size());
+            boost::json::array apps;
+            for (auto& [n, cnt] : counts) {
+                boost::json::object e; e["app"] = n; e["instances"] = cnt;
+                apps.push_back(std::move(e));
+            }
+            info["apps"] = std::move(apps);
+            return boost::json::serialize(info);
+        }
+        if (name == "chat_send") {
+            std::string text = a["text"].as_string().c_str();
+            if (a.contains("instance")) {
+                int target = static_cast<int>(a["instance"].as_int64());
+                auto sess = Config::instance().sessionRegistry().findSession("chat", target);
+                if (sess) sess->call_app_process("{\"text\":\"" + text + "\"}");
+            }
+            return R"({"success":true})";
+        }
+        if (name == "file_list") {
+            std::string path = a.contains("path") ? a["path"].as_string().c_str() : "/";
+            boost::json::array entries;
+            for (auto& entry : std::filesystem::directory_iterator(path)) {
+                boost::json::object e;
+                e["name"] = entry.path().filename().string();
+                e["is_dir"] = entry.is_directory();
+                entries.push_back(std::move(e));
+            }
+            boost::json::object r;
+            r["success"] = true; r["path"] = path; r["entries"] = std::move(entries);
+            return boost::json::serialize(r);
+        }
+        if (name == "file_read") {
+            std::string path = a["path"].as_string().c_str();
+            std::ifstream ifs(path);
+            if (!ifs) return R"({"success":false})";
+            std::string content((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
+            return R"({"success":true,"content":)" + boost::json::serialize(boost::json::string(content)) + "}";
+        }
+        if (name == "file_write") {
+            std::string path = a["path"].as_string().c_str();
+            std::ofstream ofs(path);
+            if (!ofs) return R"({"success":false})";
+            ofs << a["content"].as_string().c_str();
+            return R"({"success":true})";
+        }
+        if (name == "file_mkdir") {
+            std::filesystem::create_directories(a["path"].as_string().c_str());
+            return R"({"success":true})";
+        }
+        if (name == "file_remove") {
+            std::filesystem::remove(a["path"].as_string().c_str());
+            return R"({"success":true})";
+        }
+        if (name == "terminal_exec") {
+            std::string cmd = std::string(R"({"action":"exec_sync","command":")") + a["command"].as_string().c_str() + "\"}";
+            auto result = appProcessOnApp(app, "terminal", cmd);
+            return R"({"success":true,"result":)" + result + "}";
+        }
+        if (name == "terminal_stdin") {
+            std::string cmd = std::string(R"({"action":"stdin","data":")") + a["data"].as_string().c_str() + "\"}";
+            auto result = appProcessOnApp(app, "terminal", cmd);
+            return R"({"success":true,"result":)" + result + "}";
+        }
+        return R"({"success":false,"msg":"unknown tool: )" + name + "\"}";
+    } catch (...) {
+        return R"({"success":false,"msg":"tool execution error"})";
+    }
 }
 
 // ---- Forward declaration ----

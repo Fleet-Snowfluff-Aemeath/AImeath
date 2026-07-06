@@ -27,6 +27,125 @@ namespace agent {
         std::cerr << "[" << buf << "." << ms.count() << "] [agent-chat] " << msg << std::endl; \
     } while(0)
 
+void AgentChatParticipant::doLlmRound(const boost::json::array& msgs, int round) {
+    if (cancelled_ || round > 5) {
+        boost::json::object end;
+        end["type"] = "stream_end";
+        pushStream(std::move(end));
+        return;
+    }
+
+    std::string body = llm::build_chat_body(msgs, profile_.model, true, true,
+        profile_.temperature, profile_.max_tokens);
+
+    if (profile_.enable_tools) {
+        if (s_toolDefs.empty())
+            s_toolDefs = agent::loadToolsFromYaml("module/agent/config/tools.yml");
+        llm::inject_tools(body, true, profile_.tools, s_toolDefs);
+    }
+
+    std::string apiKey = Config::instance().deepSeekApiKey();
+    if (apiKey.empty()) return;
+
+    auto cancelled_ptr = &cancelled_;
+    auto self = shared_from_this();
+
+    std::thread t([self, body = std::move(body), apiKey = std::move(apiKey), cancelled_ptr, round, msgs]() {
+        boost::asio::io_context io_local;
+        auto client = std::make_shared<LlmClient>(io_local);
+        std::string fullResponse;
+        std::string fullReasoning;
+        auto toolCalls = std::make_shared<std::vector<LlmToolCall>>();
+
+        client->start("api.deepseek.com", "443", body, "Bearer " + apiKey,
+            [cancelled_ptr, self, toolCalls](LlmEvent ev) {
+                if (cancelled_ptr->load()) return;
+                if (!ev.tool_calls.empty()) {
+                    toolCalls->insert(toolCalls->end(), ev.tool_calls.begin(), ev.tool_calls.end());
+                }
+                if (ev.type == "delta" || ev.type == "reasoning") {
+                    boost::json::object obj;
+                    obj["type"] = ev.type;
+                    obj["text"] = ev.text;
+                    self->pushStream(std::move(obj));
+                }
+            },
+            [cancelled_ptr, self, toolCalls, round, msgs](std::string response, std::string reasoning, int, int) {
+                if (cancelled_ptr->load()) return;
+                auto merged = llm::merge_tool_calls(*toolCalls);
+                if (!merged.empty()) {
+                    boost::json::array newMsgs = msgs;
+                    {
+                        boost::json::object am;
+                        am["role"] = "assistant";
+                        if (!response.empty()) am["content"] = response;
+                        if (!reasoning.empty()) am["reasoning_content"] = reasoning;
+                        boost::json::array tcArr;
+                        for (auto& kv : merged) {
+                            auto& tc = kv.second;
+                            boost::json::object tcObj;
+                            tcObj["id"] = tc.id;
+                            tcObj["type"] = "function";
+                            tcObj["function"] = boost::json::object{{"name", tc.function_name}, {"arguments", tc.function_arguments}};
+                            tcArr.push_back(std::move(tcObj));
+                        }
+                        am["tool_calls"] = std::move(tcArr);
+                        newMsgs.push_back(std::move(am));
+                    }
+                    for (auto& kv : merged) {
+                        auto& tc = kv.second;
+                        std::string result = "{\"success\":true}";
+                        ToolExecutor executor;
+                        {
+                            std::lock_guard<std::mutex> lock(self->mtx_);
+                            executor = self->tool_executor_;
+                        }
+                        if (executor) result = executor(tc.function_name, tc.function_arguments);
+                        boost::json::object tr;
+                        tr["role"] = "tool";
+                        tr["tool_call_id"] = tc.id;
+                        tr["content"] = result;
+                        newMsgs.push_back(std::move(tr));
+                    }
+                    self->doLlmRound(newMsgs, round + 1);
+                } else {
+                    self->pushStream(boost::json::object{{"type", "stream_end"}});
+                    if (!response.empty()) {
+                        boost::json::object am;
+                        am["role"] = "assistant";
+                        am["sender_name"] = self->profile_.name;
+                        am["sender_avatar"] = self->profile_.avatar;
+                        am["content"] = response;
+                        if (!reasoning.empty()) am["reasoning_content"] = reasoning;
+                        self->pushResponse(std::move(am));
+                    }
+                }
+            });
+        io_local.run();
+    });
+    t.detach();
+}
+
+void AgentChatParticipant::pushStream(boost::json::object ev) {
+    if (!ev.contains("sender_name")) ev["sender_name"] = profile_.name;
+    if (!ev.contains("sender_avatar")) ev["sender_avatar"] = profile_.avatar;
+    StreamCallback cb;
+    {
+        std::lock_guard<std::mutex> lock(mtx_);
+        cb = stream_cb_;
+    }
+    if (cb) cb(std::move(ev));
+}
+
+void AgentChatParticipant::pushResponse(boost::json::object msg) {
+    ResponseCallback cb;
+    {
+        std::lock_guard<std::mutex> lock(mtx_);
+        cb = response_cb_;
+    }
+    if (cb) cb(std::move(msg));
+}
+
 void AgentChatParticipant::onUserMessage(
     const std::string& /*text*/,
     const std::string& /*sender_name*/,
@@ -50,116 +169,8 @@ void AgentChatParticipant::onUserMessage(
         msgs.push_back(std::move(copy));
     }
 
-    std::string body = llm::build_chat_body(msgs, profile_.model, true, true,
-        profile_.temperature, profile_.max_tokens);
-
-    if (profile_.enable_tools) {
-        if (s_toolDefs.empty())
-            s_toolDefs = agent::loadToolsFromYaml("module/agent/config/tools.yml");
-        llm::inject_tools(body, true, profile_.tools, s_toolDefs);
-    }
-
-    std::string apiKey = Config::instance().deepSeekApiKey();
-    if (apiKey.empty()) return;
-
-    void* io_ctx_local = io_ctx_ptr_;
-    boost::asio::io_context* io = static_cast<boost::asio::io_context*>(io_ctx_local);
-
-    auto cancelled_ptr = &cancelled_;
-    auto self = shared_from_this();
-
-    auto makeCallback = [this](boost::json::object msg) {
-        ResponseCallback cb;
-        {
-            std::lock_guard<std::mutex> lock(mtx_);
-            cb = response_cb_;
-        }
-        if (cb) cb(std::move(msg));
-    };
-
-    auto pushStream = [this](boost::json::object ev) {
-        if (!ev.contains("sender_name")) ev["sender_name"] = profile_.name;
-        if (!ev.contains("sender_avatar")) ev["sender_avatar"] = profile_.avatar;
-        StreamCallback cb;
-        {
-            std::lock_guard<std::mutex> lock(mtx_);
-            cb = stream_cb_;
-        }
-        if (cb) cb(std::move(ev));
-    };
-
-    auto pushResponse = [this](boost::json::object msg) {
-        ResponseCallback cb;
-        {
-            std::lock_guard<std::mutex> lock(mtx_);
-            cb = response_cb_;
-        }
-        if (cb) cb(std::move(msg));
-    };
-
-    if (!io) {
-        pushStream(boost::json::object{{"type", "stream_start"}});
-        std::thread([self, body = std::move(body), apiKey = std::move(apiKey), cancelled_ptr, pushStream, pushResponse]() {
-            boost::asio::io_context io_local;
-            auto client = std::make_shared<LlmClient>(io_local);
-            std::string fullResponse;
-
-            client->start("api.deepseek.com", "443", body, "Bearer " + apiKey,
-                [cancelled_ptr, pushStream](LlmEvent ev) {
-                    if (cancelled_ptr->load()) return;
-                    if (ev.type == "delta" || ev.type == "reasoning") {
-                        boost::json::object obj;
-                        obj["type"] = ev.type;
-                        obj["text"] = ev.text;
-                        pushStream(std::move(obj));
-                    }
-                },
-                [cancelled_ptr, &fullResponse](std::string response, std::string, int, int) {
-                    if (cancelled_ptr->load()) return;
-                    fullResponse = std::move(response);
-                });
-
-            io_local.run();
-
-            pushStream(boost::json::object{{"type", "stream_end"}});
-            if (!cancelled_ptr->load() && !fullResponse.empty()) {
-                boost::json::object am;
-                am["role"] = "assistant";
-                am["sender_name"] = self->profile_.name;
-                am["sender_avatar"] = self->profile_.avatar;
-                am["content"] = fullResponse;
-                pushResponse(std::move(am));
-            }
-        }).detach();
-        return;
-    }
-
     pushStream(boost::json::object{{"type", "stream_start"}});
-
-    auto stream = std::make_shared<LlmClient>(*io);
-
-    stream->start("api.deepseek.com", "443", body, "Bearer " + apiKey,
-        [cancelled_ptr, pushStream](LlmEvent ev) {
-            if (cancelled_ptr->load()) return;
-            if (ev.type == "delta" || ev.type == "reasoning") {
-                boost::json::object obj;
-                obj["type"] = ev.type;
-                obj["text"] = ev.text;
-                pushStream(std::move(obj));
-            }
-        },
-        [cancelled_ptr, pushStream, pushResponse, self](std::string response, std::string, int, int) {
-            if (cancelled_ptr->load()) return;
-            pushStream(boost::json::object{{"type", "stream_end"}});
-            if (!response.empty()) {
-                boost::json::object am;
-                am["role"] = "assistant";
-                am["sender_name"] = self->profile_.name;
-                am["sender_avatar"] = self->profile_.avatar;
-                am["content"] = response;
-                pushResponse(std::move(am));
-            }
-        });
+    doLlmRound(msgs, 1);
 }
 
 std::shared_ptr<IAgentChat> AgentProfileManager::createAgent(const AgentProfile& profile) {

@@ -37,6 +37,11 @@ public:
         stream_cb_ = std::move(cb);
     }
 
+    void setToolExecutor(ToolExecutor executor) override {
+        std::lock_guard<std::mutex> lock(mtx_);
+        tool_executor_ = std::move(executor);
+    }
+
     void setIoContext(void* io_ctx) override {
         io_ctx_ptr_ = io_ctx;
     }
@@ -47,6 +52,7 @@ public:
             std::lock_guard<std::mutex> lock(mtx_);
             response_cb_ = nullptr;
             stream_cb_ = nullptr;
+            tool_executor_ = nullptr;
         }
     }
 
@@ -56,7 +62,11 @@ private:
     std::atomic<bool> cancelled_{false};
     ResponseCallback response_cb_;
     StreamCallback stream_cb_;
+    ToolExecutor tool_executor_;
     void* io_ctx_ptr_ = nullptr;
+    void doLlmRound(const boost::json::array& msgs, int round);
+    void pushStream(boost::json::object ev);
+    void pushResponse(boost::json::object msg);
 };
 
 } // namespace agent

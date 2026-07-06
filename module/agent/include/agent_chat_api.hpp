@@ -30,6 +30,9 @@ public:
     using StreamCallback = std::function<void(boost::json::object stream_event)>;
     virtual void setStreamCallback(StreamCallback cb) = 0;
 
+    using ToolExecutor = std::function<std::string(const std::string& name, const std::string& args)>;
+    virtual void setToolExecutor(ToolExecutor executor) = 0;
+
     virtual void setIoContext(void* io_ctx) = 0;
 
     virtual void stop() = 0;
