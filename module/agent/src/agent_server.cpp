@@ -13,6 +13,7 @@
 #include "llm_client.hpp"
 #include "llm_utils.hpp"
 #include "config.hpp"
+#include "ws_server.hpp"
 
 namespace asio = boost::asio;
 
@@ -38,11 +39,28 @@ static boost::json::object buildSystemMsg()
         "When a user asks about open apps or window count, ALWAYS call list_active_windows first to get accurate data. Do NOT guess or enumerate all possible app types.\n"
         "When a user asks you to do something, use the available tools to execute actions.\n"
         "After each tool execution, briefly explain what you did in Chinese.\n"
-        "Available tools: open_app (open an application), control_app (send commands to an app), "
-        "close_app (close an application), get_app_state (query app status for a specific app), "
-        "chat_send (send a message to chat), file_list (list directory contents), "
-        "file_read (read a file), terminal_exec (execute a terminal command), "
-        "list_active_windows (list all open windows with their session IDs).\n"
+        "CRITICAL RULES:\n"
+        "- NEVER open a terminal app when user wants to run a shell command (ls, pwd, echo, cat, etc.) - use terminal_exec instead.\n"
+        "- terminal_exec runs any command and returns output directly. DO NOT use open_app terminal + control_app for commands.\n"
+        "- Only use open_app with 'terminal' if the user explicitly says they want to see a terminal window visual interface.\n"
+        "- NEVER open a filemanager app when user wants to browse/list/read files - use file_list/file_read instead.\n"
+        "- file_list is for browsing directory contents (like ls). file_read is for reading file contents.\n"
+        "- file_write/file_mkdir/file_remove are for file operations. DO NOT open filemanager app for these.\n"
+        "- Only use open_app with 'filemanager' if the user explicitly asks to see the visual file manager window.\n"
+        "Available tools:\n"
+        "- open_app: open an application window (snake, gomoku, pacman, go, chat, terminal, filemanager)\n"
+        "- control_app: send game direction via integer value (0=up,1=down,2=left,3=right)\n"
+        "- close_app: close an application\n"
+        "- get_app_state: query an app's current status\n"
+        "- chat_send: send a message to the chat application\n"
+        "- file_list: list files and directories in a specified path\n"
+        "- file_read: read the content of a file\n"
+        "- file_write: write content to a file (create or overwrite)\n"
+        "- file_mkdir: create a new directory\n"
+        "- file_remove: delete a file or empty directory\n"
+        "- terminal_exec: execute a shell command and get output (use this for running ls, pwd, echo, cat, etc.)\n"
+        "- terminal_stdin: send input data to a running terminal command\n"
+        "- list_active_windows: list all open windows with their session IDs\n"
         "Keep responses concise and friendly.";
     return msg;
 }
@@ -56,13 +74,13 @@ boost::json::array AgentServer::buildTools()
         t["type"] = "function";
         boost::json::object f;
         f["name"] = "open_app";
-        f["description"] = "打开一个应用程序窗口. Use this when the user asks to open or launch an app.";
+        f["description"] = "打开一个应用程序窗口. 支持的应用: snake (贪吃蛇), gomoku (五子棋), pacman (吃豆人), go (围棋), chat (聊天), terminal (终端), filemanager (文件管理器). NOTE: 如果用户想浏览/查看/管理文件, 请使用 file_list/file_read/file_write 等工具, 不要打开 filemanager 应用. 只有用户明确要求打开文件管理器可视化界面时才使用 open_app filemanager. 同理, shell 命令用 terminal_exec, 不需要打开 terminal.";
         boost::json::object params;
         params["type"] = "object";
         boost::json::object props;
         boost::json::object appProp;
         appProp["type"] = "string";
-        appProp["description"] = "应用名称, 可选: snake, gomoku, pacman, go, chat, terminal, filemanager";
+        appProp["description"] = "应用名称: snake(贪吃蛇), gomoku(五子棋), pacman(吃豆人), go(围棋), chat(聊天), terminal(终端), filemanager(文件管理器)";
         props["app"] = appProp;
         boost::json::object wProp;
         wProp["type"] = "integer";
@@ -87,9 +105,12 @@ boost::json::array AgentServer::buildTools()
         boost::json::object f;
         f["name"] = "control_app";
         f["description"] =
-            "向已打开的应用发送操作指令. Use this to control a running app, "
-            "e.g., move in a game. Direction values: 0=up, 1=down, 2=left, 3=right. "
-            "For go: -1=pass, -2=resign.";
+            "向已打开的应用发送操作指令. For games: direction values 0=up, 1=down, 2=left, 3=right; "
+            "For go: -1=pass, -2=resign. "
+            "NOTE: This tool ONLY works for game apps (snake, gomoku, pacman, go). "
+            "For running shell commands, use terminal_exec instead. "
+            "For sending chat messages, use chat_send instead. "
+            "For browsing files, use file_list/file_read instead.";
         boost::json::object params;
         params["type"] = "object";
         boost::json::object props;
@@ -99,7 +120,7 @@ boost::json::array AgentServer::buildTools()
         props["app"] = appProp;
         boost::json::object valProp;
         valProp["type"] = "integer";
-        valProp["description"] = "操作值 (游戏方向等)";
+        valProp["description"] = "操作值 (游戏方向等, 仅游戏类应用)";
         props["value"] = valProp;
         params["properties"] = props;
         boost::json::array required;
@@ -164,7 +185,7 @@ boost::json::array AgentServer::buildTools()
         t["type"] = "function";
         boost::json::object f;
         f["name"] = "chat_send";
-        f["description"] = "向聊天应用发送一条消息.";
+        f["description"] = "向当前用户或指定聊天实例发送消息。不指定 instance 时回复当前用户；指定 instance 时发送到对应聊天窗口(chat-0, chat-1等)。";
         boost::json::object params;
         params["type"] = "object";
         boost::json::object props;
@@ -172,6 +193,10 @@ boost::json::array AgentServer::buildTools()
         textProp["type"] = "string";
         textProp["description"] = "要发送的消息内容";
         props["text"] = textProp;
+        boost::json::object instProp;
+        instProp["type"] = "integer";
+        instProp["description"] = "目标聊天实例编号(0,1,2...)，不指定则回复当前用户";
+        props["instance"] = instProp;
         params["properties"] = props;
         boost::json::array required;
         required.push_back(boost::json::string("text"));
@@ -186,7 +211,7 @@ boost::json::array AgentServer::buildTools()
         t["type"] = "function";
         boost::json::object f;
         f["name"] = "file_list";
-        f["description"] = "列出指定目录中的文件和文件夹.";
+        f["description"] = "列出指定目录中的文件和文件夹. 当用户想浏览/查看文件夹内容时, 请使用此工具而非打开文件管理器. 这是查看目录内容的唯一方式.";
         boost::json::object params;
         params["type"] = "object";
         boost::json::object props;
@@ -206,7 +231,7 @@ boost::json::array AgentServer::buildTools()
         t["type"] = "function";
         boost::json::object f;
         f["name"] = "file_read";
-        f["description"] = "读取指定文件的内容.";
+        f["description"] = "读取指定文件的内容. 可以读取文本文件、代码文件、配置文件等. 使用绝对路径.";
         boost::json::object params;
         params["type"] = "object";
         boost::json::object props;
@@ -227,8 +252,79 @@ boost::json::array AgentServer::buildTools()
         boost::json::object t;
         t["type"] = "function";
         boost::json::object f;
+        f["name"] = "file_write";
+        f["description"] = "向指定文件写入内容. 如果文件不存在则创建, 如果已存在则覆盖. 可用于创建新文件、修改文件内容等. 使用绝对路径.";
+        boost::json::object params;
+        params["type"] = "object";
+        boost::json::object props;
+        boost::json::object pathProp;
+        pathProp["type"] = "string";
+        pathProp["description"] = "文件路径";
+        props["path"] = pathProp;
+        boost::json::object contentProp;
+        contentProp["type"] = "string";
+        contentProp["description"] = "要写入的内容";
+        props["content"] = contentProp;
+        params["properties"] = props;
+        boost::json::array required;
+        required.push_back(boost::json::string("path"));
+        required.push_back(boost::json::string("content"));
+        params["required"] = required;
+        f["parameters"] = params;
+        t["function"] = f;
+        tools.push_back(t);
+    }
+
+    {
+        boost::json::object t;
+        t["type"] = "function";
+        boost::json::object f;
+        f["name"] = "file_mkdir";
+        f["description"] = "创建一个新目录. 如果父目录不存在也会尝试创建. 使用绝对路径.";
+        boost::json::object params;
+        params["type"] = "object";
+        boost::json::object props;
+        boost::json::object pathProp;
+        pathProp["type"] = "string";
+        pathProp["description"] = "目录路径";
+        props["path"] = pathProp;
+        params["properties"] = props;
+        boost::json::array required;
+        required.push_back(boost::json::string("path"));
+        params["required"] = required;
+        f["parameters"] = params;
+        t["function"] = f;
+        tools.push_back(t);
+    }
+
+    {
+        boost::json::object t;
+        t["type"] = "function";
+        boost::json::object f;
+        f["name"] = "file_remove";
+        f["description"] = "删除指定文件或空目录. 只能删除空目录, 非空目录无法删除. 使用绝对路径.";
+        boost::json::object params;
+        params["type"] = "object";
+        boost::json::object props;
+        boost::json::object pathProp;
+        pathProp["type"] = "string";
+        pathProp["description"] = "要删除的文件或目录路径";
+        props["path"] = pathProp;
+        params["properties"] = props;
+        boost::json::array required;
+        required.push_back(boost::json::string("path"));
+        params["required"] = required;
+        f["parameters"] = params;
+        t["function"] = f;
+        tools.push_back(t);
+    }
+
+    {
+        boost::json::object t;
+        t["type"] = "function";
+        boost::json::object f;
         f["name"] = "terminal_exec";
-        f["description"] = "在终端中执行一条命令并获取输出.";
+        f["description"] = "在终端中执行一条 shell 命令并获取输出. 当用户想执行 ls/pwd/echo/cat/date 等命令时, 请直接使用此工具, 不要先打开终端应用. 可以执行任何命令如 ls (列出文件), pwd (当前路径), echo (输出文字), cat (查看文件), whoami (当前用户), date (日期) 等. 这是执行 shell 命令的唯一方式. 不需要先 open_app terminal, 直接使用此工具即可.";
         boost::json::object params;
         params["type"] = "object";
         boost::json::object props;
@@ -239,6 +335,28 @@ boost::json::array AgentServer::buildTools()
         params["properties"] = props;
         boost::json::array required;
         required.push_back(boost::json::string("command"));
+        params["required"] = required;
+        f["parameters"] = params;
+        t["function"] = f;
+        tools.push_back(t);
+    }
+
+    {
+        boost::json::object t;
+        t["type"] = "function";
+        boost::json::object f;
+        f["name"] = "terminal_stdin";
+        f["description"] = "向正在运行的终端命令发送标准输入数据 (用于交互式命令).";
+        boost::json::object params;
+        params["type"] = "object";
+        boost::json::object props;
+        boost::json::object dataProp;
+        dataProp["type"] = "string";
+        dataProp["description"] = "要发送的输入数据";
+        props["data"] = dataProp;
+        params["properties"] = props;
+        boost::json::array required;
+        required.push_back(boost::json::string("data"));
         params["required"] = required;
         f["parameters"] = params;
         t["function"] = f;
@@ -272,7 +390,11 @@ void AgentServer::registerBuiltinTools()
     tools_["chat_send"] = {"chat_send", "向聊天应用发送消息", {}, nullptr};
     tools_["file_list"] = {"file_list", "列出目录文件", {}, nullptr};
     tools_["file_read"] = {"file_read", "读取文件内容", {}, nullptr};
+    tools_["file_write"] = {"file_write", "写入文件内容", {}, nullptr};
+    tools_["file_mkdir"] = {"file_mkdir", "创建目录", {}, nullptr};
+    tools_["file_remove"] = {"file_remove", "删除文件或目录", {}, nullptr};
     tools_["terminal_exec"] = {"terminal_exec", "在终端执行命令", {}, nullptr};
+    tools_["terminal_stdin"] = {"terminal_stdin", "向终端写入输入", {}, nullptr};
     tools_["list_active_windows"] = {"list_active_windows", "列出活跃窗口", {}, nullptr};
 }
 
@@ -814,10 +936,23 @@ boost::json::value AgentServer::executeTool(const std::string& name, const boost
         }
     } else if (name == "chat_send") {
         std::string text = a.at("text").as_string().c_str();
-        boost::json::object cmd;
-        cmd["text"] = text;
-        auto r = AppManager::instance().controlApp("chat", boost::json::serialize(cmd));
-        result["result"] = r.is_null() ? boost::json::value("sent") : r;
+        if (a.contains("instance")) {
+            int target = static_cast<int>(a.at("instance").as_int64());
+            auto targetSess = Config::instance().sessionRegistry().findSession("chat", target);
+            if (targetSess) {
+                std::string cmd = "{\"text\":\"" + text + "\"}";
+                targetSess->call_app_process(cmd);
+                result["result"] = "sent to chat-" + std::to_string(target);
+            } else {
+                result["success"] = false;
+                result["result"] = "chat instance " + std::to_string(target) + " not found";
+            }
+        } else {
+            boost::json::object cmd;
+            cmd["text"] = text;
+            auto r = AppManager::instance().controlApp("chat", boost::json::serialize(cmd));
+            result["result"] = r.is_null() ? boost::json::value("sent") : r;
+        }
     } else if (name == "file_list") {
         std::string path = a.contains("path") ? a.at("path").as_string().c_str() : "/";
         boost::json::object cmd;
@@ -834,6 +969,35 @@ boost::json::value AgentServer::executeTool(const std::string& name, const boost
         auto r = AppManager::instance().controlApp("filemanager", boost::json::serialize(cmd));
         if (!r.is_null()) result["file"] = r;
         else result["success"] = false;
+    } else if (name == "file_write") {
+        std::string path = a.at("path").as_string().c_str();
+        std::string content = a.at("content").as_string().c_str();
+        boost::json::object cmd;
+        cmd["action"] = "write";
+        cmd["path"] = path;
+        cmd["content"] = content;
+        auto r = AppManager::instance().controlApp("filemanager", boost::json::serialize(cmd));
+        if (!r.is_null()) result["result"] = r;
+        else result["success"] = false;
+        result["msg"] = std::string("written to ") + path;
+    } else if (name == "file_mkdir") {
+        std::string path = a.at("path").as_string().c_str();
+        boost::json::object cmd;
+        cmd["action"] = "mkdir";
+        cmd["path"] = path;
+        auto r = AppManager::instance().controlApp("filemanager", boost::json::serialize(cmd));
+        if (!r.is_null()) result["result"] = r;
+        else result["success"] = false;
+        result["msg"] = std::string("mkdir ") + path;
+    } else if (name == "file_remove") {
+        std::string path = a.at("path").as_string().c_str();
+        boost::json::object cmd;
+        cmd["action"] = "remove";
+        cmd["path"] = path;
+        auto r = AppManager::instance().controlApp("filemanager", boost::json::serialize(cmd));
+        if (!r.is_null()) result["result"] = r;
+        else result["success"] = false;
+        result["msg"] = std::string("removed ") + path;
     } else if (name == "terminal_exec") {
         std::string command = a.at("command").as_string().c_str();
         boost::json::object cmd;
@@ -842,6 +1006,15 @@ boost::json::value AgentServer::executeTool(const std::string& name, const boost
         auto r = AppManager::instance().controlApp("terminal", boost::json::serialize(cmd));
         if (!r.is_null()) result["output"] = r;
         else result["success"] = false;
+    } else if (name == "terminal_stdin") {
+        std::string data = a.at("data").as_string().c_str();
+        boost::json::object cmd;
+        cmd["action"] = "stdin";
+        cmd["data"] = data;
+        auto r = AppManager::instance().controlApp("terminal", boost::json::serialize(cmd));
+        if (!r.is_null()) result["result"] = r;
+        else result["success"] = false;
+        result["msg"] = "input sent to terminal";
     } else if (name == "list_active_windows") {
         auto windows = AppManager::instance().listActiveWindows();
         result["windows"] = windows;
@@ -970,6 +1143,78 @@ bool AgentServer::closeApp(const std::string& name)
     out["app"] = name;
     pushOutput(std::move(out));
     return true;
+}
+
+bool AgentServer::chatSend(const std::string& text)
+{
+    boost::json::object cmd;
+    cmd["text"] = text;
+    auto r = AppManager::instance().controlApp("chat", boost::json::serialize(cmd));
+    return !r.is_null();
+}
+
+bool AgentServer::fileList(const std::string& path)
+{
+    boost::json::object cmd;
+    cmd["action"] = "list";
+    cmd["path"] = path;
+    auto r = AppManager::instance().controlApp("filemanager", boost::json::serialize(cmd));
+    return !r.is_null();
+}
+
+bool AgentServer::fileRead(const std::string& path)
+{
+    boost::json::object cmd;
+    cmd["action"] = "read";
+    cmd["path"] = path;
+    auto r = AppManager::instance().controlApp("filemanager", boost::json::serialize(cmd));
+    return !r.is_null();
+}
+
+bool AgentServer::fileWrite(const std::string& path, const std::string& content)
+{
+    boost::json::object cmd;
+    cmd["action"] = "write";
+    cmd["path"] = path;
+    cmd["content"] = content;
+    auto r = AppManager::instance().controlApp("filemanager", boost::json::serialize(cmd));
+    return !r.is_null();
+}
+
+bool AgentServer::fileMkdir(const std::string& path)
+{
+    boost::json::object cmd;
+    cmd["action"] = "mkdir";
+    cmd["path"] = path;
+    auto r = AppManager::instance().controlApp("filemanager", boost::json::serialize(cmd));
+    return !r.is_null();
+}
+
+bool AgentServer::fileRemove(const std::string& path)
+{
+    boost::json::object cmd;
+    cmd["action"] = "remove";
+    cmd["path"] = path;
+    auto r = AppManager::instance().controlApp("filemanager", boost::json::serialize(cmd));
+    return !r.is_null();
+}
+
+bool AgentServer::terminalExec(const std::string& command)
+{
+    boost::json::object cmd;
+    cmd["action"] = "exec_sync";
+    cmd["command"] = command;
+    auto r = AppManager::instance().controlApp("terminal", boost::json::serialize(cmd));
+    return !r.is_null();
+}
+
+bool AgentServer::terminalStdin(const std::string& data)
+{
+    boost::json::object cmd;
+    cmd["action"] = "stdin";
+    cmd["data"] = data;
+    auto r = AppManager::instance().controlApp("terminal", boost::json::serialize(cmd));
+    return !r.is_null();
 }
 
 void AgentServer::stop()

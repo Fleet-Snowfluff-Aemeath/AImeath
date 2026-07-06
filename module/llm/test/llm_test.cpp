@@ -369,8 +369,24 @@ TEST(LlmUtilsTest, GetDefaultTools)
 TEST(LlmUtilsTest, GetDefaultToolsCount)
 {
     auto tools = llm::get_default_tools();
-    EXPECT_EQ(tools.size(), 5u);
-    EXPECT_EQ(tools[4].as_object()["function"].as_object()["name"].as_string(), std::string("list_apps"));
+    EXPECT_GE(tools.size(), 14u);
+    // Verify key tool names exist
+    std::set<std::string> names;
+    for (auto& t : tools) {
+        auto& obj = t.as_object();
+        EXPECT_EQ(obj["type"].as_string(), std::string("function"));
+        names.insert(obj["function"].as_object()["name"].as_string().c_str());
+    }
+    EXPECT_TRUE(names.count("list_apps"));
+    EXPECT_TRUE(names.count("list_active_windows"));
+    EXPECT_TRUE(names.count("chat_send"));
+    EXPECT_TRUE(names.count("file_list"));
+    EXPECT_TRUE(names.count("file_read"));
+    EXPECT_TRUE(names.count("file_write"));
+    EXPECT_TRUE(names.count("file_mkdir"));
+    EXPECT_TRUE(names.count("file_remove"));
+    EXPECT_TRUE(names.count("terminal_exec"));
+    EXPECT_TRUE(names.count("terminal_stdin"));
 }
 
 TEST(LlmUtilsTest, InjectTools)

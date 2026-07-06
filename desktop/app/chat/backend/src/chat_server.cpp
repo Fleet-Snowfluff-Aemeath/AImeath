@@ -18,7 +18,11 @@
 
 #include <boost/asio.hpp>
 #include <boost/json.hpp>
+#include <filesystem>
+#include <fstream>
 
+#include "agent_chat_api.hpp"
+#include "agent_profile.hpp"
 #include "llm_client.hpp"
 #include "llm_utils.hpp"
 #include "config.hpp"
@@ -42,7 +46,7 @@ namespace asio  = boost::asio;
 
 struct ChatApp;
 static void processNextInQueue(ChatApp* app);
-static void handleUserMessageAsync(ChatApp* app, const std::string& text);
+static void handleUserMessageAsync(ChatApp* app, const std::string& text, const std::string& sender_name = "用户");
 static void processToolCalls(ChatApp* app,
     const std::vector<LlmToolCall>& mergedList,
     const std::string& response,
@@ -90,6 +94,8 @@ struct ChatApp : std::enable_shared_from_this<ChatApp>
     IModuleCache* mod_cache = nullptr;
     std::map<std::string, AppInstance> instances;
 
+    std::vector<std::shared_ptr<agent::IAgentChat>> agents;
+
     void push_output(boost::json::value val)
     {
         bool is_end = false;
@@ -136,7 +142,7 @@ struct ChatApp : std::enable_shared_from_this<ChatApp>
 
 // ---- Command handling ----
 
-static boost::json::array handleCommand(const std::string& text)
+static boost::json::array handleCommand(ChatApp* app, const std::string& text)
 {
     std::string s = text.substr(1);
     size_t endPos = s.find_last_not_of(" \t");
@@ -152,6 +158,80 @@ static boost::json::array handleCommand(const std::string& text)
 
     boost::json::object embed;
     embed["type"] = "embed";
+
+    if (cmd == "agent") {
+        if (arg.empty() || arg == "list") {
+            std::string agentList = "房间AI助手列表 (" + std::to_string(app->agents.size()) + "):\n";
+            for (size_t i = 0; i < app->agents.size(); ++i) {
+                auto& a = app->agents[i];
+                agentList += std::to_string(i + 1) + ". " + a->getAvatar() + " " + a->getName() + "\n";
+            }
+            embed["kind"] = "text";
+            embed["text"] = agentList;
+        } else if (arg == "available") {
+            std::string profileDir = std::string(PROJ_ROOT) + "/module/agent/config";
+            auto profiles = agent::AgentProfile::loadAll(profileDir);
+            std::string list = "可用AI助手配置:\n";
+            for (auto& p : profiles)
+                list += "  " + p.avatar + " " + p.name + "\n";
+            embed["kind"] = "text";
+            embed["text"] = list;
+        } else if (arg.rfind("add ", 0) == 0) {
+            std::string agentName = arg.substr(4);
+            std::string profileDir = std::string(PROJ_ROOT) + "/module/agent/config";
+            auto profiles = agent::AgentProfile::loadAll(profileDir);
+            bool found = false;
+            for (auto& p : profiles) {
+                if (p.name == agentName) {
+                    auto agentPtr = agent::AgentProfileManager::createAgent(p);
+                    if (app->io_ctx_ptr) agentPtr->setIoContext(app->io_ctx_ptr);
+                    agentPtr->setResponseCallback([app](boost::json::object msg) {
+                        if (app->cancelled) return;
+                        boost::json::object out;
+                        out["type"] = "agent_msg";
+                        out["sender_name"] = msg["sender_name"];
+                        out["sender_avatar"] = msg["sender_avatar"];
+                        out["content"] = msg["content"];
+                        app->push_output(std::move(out));
+                        std::lock_guard<std::mutex> lock(app->mtx);
+                        app->history.push_back(std::move(msg));
+                    });
+                    app->agents.push_back(std::move(agentPtr));
+                    embed["kind"] = "text";
+                    embed["text"] = "已添加AI助手: " + agentName;
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                embed["kind"] = "text";
+                embed["text"] = "未找到AI助手: " + agentName + "。可用: /agent available";
+            }
+        } else if (arg.rfind("remove ", 0) == 0) {
+            std::string agentName = arg.substr(7);
+            bool removed = false;
+            for (auto it = app->agents.begin(); it != app->agents.end(); ++it) {
+                if ((*it)->getName() == agentName) {
+                    (*it)->stop();
+                    app->agents.erase(it);
+                    embed["kind"] = "text";
+                    embed["text"] = "已移除AI助手: " + agentName;
+                    removed = true;
+                    break;
+                }
+            }
+            if (!removed) {
+                embed["kind"] = "text";
+                embed["text"] = "未找到AI助手: " + agentName;
+            }
+        } else {
+            embed["kind"] = "text";
+            embed["text"] = "未知agent命令: /agent list, /agent add <name>, /agent remove <name>";
+        }
+        boost::json::array result;
+        result.push_back(std::move(embed));
+        return result;
+    }
 
     if (s == "图片") {
         embed["kind"] = "image";
@@ -373,13 +453,14 @@ static void processToolCalls(ChatApp* app,
             } catch (std::exception& e) {
                 tr["content"] = "{\"success\":false,\"msg\":\"error: " + std::string(e.what()) + "\"}";
             }
-        } else if (tc.function_name == "list_apps") {
+        } else if (tc.function_name == "list_apps" || tc.function_name == "list_active_windows") {
             auto all = Config::instance().sessionRegistry().listSessions();
             std::map<std::string, int> counts;
             for (auto& [name, idx] : all)
                 counts[name] = std::max(counts[name], idx + 1);
             boost::json::object info;
             info["total"] = static_cast<int64_t>(all.size());
+            info["count"] = static_cast<int64_t>(all.size());
             boost::json::array apps;
             for (auto& [name, cnt] : counts) {
                 boost::json::object entry;
@@ -389,6 +470,122 @@ static void processToolCalls(ChatApp* app,
             }
             info["apps"] = std::move(apps);
             tr["content"] = boost::json::serialize(info);
+        } else if (tc.function_name == "chat_send") {
+            try {
+                auto args = boost::json::parse(tc.function_arguments);
+                std::string text = args.as_object()["text"].as_string().c_str();
+                if (args.as_object().contains("instance")) {
+                    int target = static_cast<int>(args.as_object()["instance"].as_int64());
+                    auto targetSess = Config::instance().sessionRegistry().findSession("chat", target);
+                    if (targetSess) {
+                        std::string cmd = "{\"text\":\"" + text + "\"}";
+                        targetSess->call_app_process(cmd);
+                        tr["content"] = "{\"success\":true,\"msg\":\"sent to chat-" + std::to_string(target) + ": " + text + "\"}";
+                    } else {
+                        tr["content"] = "{\"success\":false,\"msg\":\"chat instance " + std::to_string(target) + " not found\"}";
+                    }
+                } else {
+                    tr["content"] = "{\"success\":true,\"msg\":\"sent: " + text + "\"}";
+                }
+            } catch (...) {
+                tr["content"] = "{\"success\":false,\"msg\":\"failed to parse arguments\"}";
+            }
+        } else if (tc.function_name == "file_list") {
+            try {
+                auto args = boost::json::parse(tc.function_arguments);
+                std::string path = "/";
+                if (args.as_object().contains("path"))
+                    path = args.as_object()["path"].as_string().c_str();
+                namespace fs = std::filesystem;
+                boost::json::array entries;
+                int count = 0;
+                for (auto& entry : fs::directory_iterator(path)) {
+                    boost::json::object e;
+                    e["name"] = entry.path().filename().string();
+                    e["is_dir"] = entry.is_directory();
+                    e["size"] = static_cast<int64_t>(entry.is_regular_file() ? fs::file_size(entry) : 0);
+                    entries.push_back(std::move(e));
+                    ++count;
+                }
+                boost::json::object result;
+                result["success"] = true;
+                result["path"] = path;
+                result["count"] = count;
+                result["entries"] = std::move(entries);
+                tr["content"] = boost::json::serialize(result);
+            } catch (std::exception& e) {
+                tr["content"] = "{\"success\":false,\"msg\":\"" + std::string(e.what()) + "\"}";
+            }
+        } else if (tc.function_name == "file_read") {
+            try {
+                auto args = boost::json::parse(tc.function_arguments);
+                std::string path = args.as_object()["path"].as_string().c_str();
+                std::ifstream ifs(path);
+                if (!ifs) {
+                    tr["content"] = "{\"success\":false,\"msg\":\"cannot open file: " + path + "\"}";
+                } else {
+                    std::string content((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
+                    boost::json::object result;
+                    result["success"] = true;
+                    result["path"] = path;
+                    result["content"] = content;
+                    result["size"] = static_cast<int64_t>(content.size());
+                    tr["content"] = boost::json::serialize(result);
+                }
+            } catch (std::exception& e) {
+                tr["content"] = "{\"success\":false,\"msg\":\"" + std::string(e.what()) + "\"}";
+            }
+        } else if (tc.function_name == "file_write") {
+            try {
+                auto args = boost::json::parse(tc.function_arguments);
+                std::string path = args.as_object()["path"].as_string().c_str();
+                std::string content = args.as_object()["content"].as_string().c_str();
+                std::ofstream ofs(path);
+                if (!ofs) {
+                    tr["content"] = "{\"success\":false,\"msg\":\"cannot write file: " + path + "\"}";
+                } else {
+                    ofs << content;
+                    tr["content"] = "{\"success\":true,\"msg\":\"wrote " + std::to_string(content.size()) + " bytes to " + path + "\"}";
+                }
+            } catch (std::exception& e) {
+                tr["content"] = "{\"success\":false,\"msg\":\"" + std::string(e.what()) + "\"}";
+            }
+        } else if (tc.function_name == "file_mkdir") {
+            try {
+                auto args = boost::json::parse(tc.function_arguments);
+                std::string path = args.as_object()["path"].as_string().c_str();
+                std::filesystem::create_directories(path);
+                tr["content"] = "{\"success\":true,\"msg\":\"created directory: " + path + "\"}";
+            } catch (std::exception& e) {
+                tr["content"] = "{\"success\":false,\"msg\":\"" + std::string(e.what()) + "\"}";
+            }
+        } else if (tc.function_name == "file_remove") {
+            try {
+                auto args = boost::json::parse(tc.function_arguments);
+                std::string path = args.as_object()["path"].as_string().c_str();
+                std::filesystem::remove(path);
+                tr["content"] = "{\"success\":true,\"msg\":\"removed: " + path + "\"}";
+            } catch (std::exception& e) {
+                tr["content"] = "{\"success\":false,\"msg\":\"" + std::string(e.what()) + "\"}";
+            }
+        } else if (tc.function_name == "terminal_exec") {
+            try {
+                auto args = boost::json::parse(tc.function_arguments);
+                std::string command = args.as_object()["command"].as_string().c_str();
+                auto result = appProcessOnApp(app, "terminal", R"({"action":"exec_sync","command":")" + command + "\"}");
+                tr["content"] = "{\"success\":true,\"result\":" + result + "}";
+            } catch (std::exception& e) {
+                tr["content"] = "{\"success\":false,\"msg\":\"" + std::string(e.what()) + "\"}";
+            }
+        } else if (tc.function_name == "terminal_stdin") {
+            try {
+                auto args = boost::json::parse(tc.function_arguments);
+                std::string data = args.as_object()["data"].as_string().c_str();
+                auto result = appProcessOnApp(app, "terminal", R"({"action":"stdin","data":")" + data + "\"}");
+                tr["content"] = "{\"success\":true,\"result\":" + result + "}";
+            } catch (std::exception& e) {
+                tr["content"] = "{\"success\":false,\"msg\":\"" + std::string(e.what()) + "\"}";
+            }
         } else {
             tr["content"] = "{\"success\":false,\"msg\":\"unknown tool: " + tc.function_name + "\"}";
         }
@@ -454,10 +651,12 @@ static void processNextInQueue(ChatApp* app)
     handleUserMessageAsync(app, next);
 }
 
-static void handleUserMessageAsync(ChatApp* app, const std::string& text)
+static void handleUserMessageAsync(ChatApp* app, const std::string& text, const std::string& sender_name)
 {
     boost::json::object user_msg;
     user_msg["role"] = "user";
+    user_msg["sender_name"] = sender_name;
+    user_msg["sender_avatar"] = "";
     user_msg["content"] = text;
     {
         std::lock_guard<std::mutex> lock(app->mtx);
@@ -473,27 +672,34 @@ static void handleUserMessageAsync(ChatApp* app, const std::string& text)
     boost::json::array msgs;
     for (const auto& m : history_copy) msgs.push_back(m);
 
-    // 注入已打开 app 的状态到 LLM 上下文，使 agent 能感知 state
-    // 优先查 SessionRegistry（用户实际操作的 WebSocket 实例），
-    // 没有则查 ChatApp 内部的内置实例。
-    // 额外查 SessionRegistry 中 agent 未打开的 app（用户直接点开的游戏）。
+    // 注入固定的系统消息：定义 agent 身份和关键规则
+    {
+        boost::json::object sys;
+        sys["role"] = "system";
+        sys["content"] =
+            std::string("你是一个AI智能助手。你正在一个聊天会话中。\n") +
+            "关键规则：\n" +
+            "- 你在当前聊天窗口中。使用 list_active_windows 查看所有打开的窗口。\n" +
+            "- chat_send 工具：不指定 instance 时回复当前用户；指定 instance 时可向其他聊天窗口发送消息（如 chat_send(instance=0, text=\"你好\")）。\n" +
+            "- get_app_state 对聊天应用无效。你只能通过对话历史看到当前聊天的消息。\n" +
+            "- 用户要求执行 shell 命令时，使用 terminal_exec，不要打开终端应用。\n" +
+            "- 用户要求浏览/查看文件时，使用 file_list/file_read，不要打开文件管理器。\n" +
+            "- control_app 和 get_app_state 仅对游戏应用有效（snake, gomoku, pacman, go）。\n" +
+            "可用工具：open_app、control_app（仅游戏）、close_app、get_app_state（仅游戏）、chat_send、file_list、file_read、file_write、file_mkdir、file_remove、terminal_exec、terminal_stdin、list_active_windows。\n";
+        msgs.insert(msgs.begin(), std::move(sys));
+    }
+
+    // 注入已打开 app 的状态到 LLM 上下文
     auto& registry = Config::instance().sessionRegistry();
-    std::string stateSummary = "当前已打开的全部应用（以下列表为系统真实状态，请以此为准，勿枚举其他应用类型）：\n";
+    std::string stateSummary = "当前已打开的全部应用：\n";
     bool anyOpen = false;
 
-    // 标记哪些 (name, idx) 已被注入（通过 app->instances 内实例会话的）
     std::set<std::pair<std::string,int>> injected;
-
     auto allSessions = registry.listSessions();
 
-    // 清理已关闭的 session 对应的内部实例
     for (auto it = app->instances.begin(); it != app->instances.end(); ) {
         auto sess = registry.findSession(it->first, 0);
-        if (!sess) {
-            it = app->instances.erase(it);
-        } else {
-            ++it;
-        }
+        if (!sess) { it = app->instances.erase(it); } else { ++it; }
     }
 
     for (auto& [name, inst] : app->instances) {
@@ -501,7 +707,9 @@ static void handleUserMessageAsync(ChatApp* app, const std::string& text)
         while (true) {
             auto sess = registry.findSession(name, idx);
             if (!sess) break;
-            std::string s = sess->call_app_process("{\"action\":\"get_state\"}");
+            std::string s = (name == "chat")
+                ? "(message content not readable via tools)"
+                : sess->call_app_process("{\"action\":\"get_state\"}");
             stateSummary += "- " + std::string(displayName(name)) + "-" + std::to_string(idx + 1) + ": " + s + "\n";
             injected.insert({name, idx});
             anyOpen = true;
@@ -509,24 +717,24 @@ static void handleUserMessageAsync(ChatApp* app, const std::string& text)
         }
     }
 
-    // 注入 SessionRegistry 中尚未注入的实例（用户直接打开但 agent 未 open_app 的）
     for (auto& kv : allSessions) {
         auto& name = kv.first;
         int idx = kv.second;
-        if (injected.count({name, idx}))
-            continue;
+        if (injected.count({name, idx})) continue;
         auto sess = registry.findSession(name, idx);
         if (!sess) continue;
-        std::string s = sess->call_app_process("{\"action\":\"get_state\"}");
+        std::string s = (name == "chat")
+            ? "(message content not readable via tools)"
+            : sess->call_app_process("{\"action\":\"get_state\"}");
         stateSummary += "- " + std::string(displayName(name)) + "-" + std::to_string(idx + 1) + ": " + s + "\n";
         anyOpen = true;
     }
 
     if (anyOpen) {
-        boost::json::object sysMsg;
-        sysMsg["role"] = "system";
-        sysMsg["content"] = stateSummary;
-        msgs.insert(msgs.begin(), std::move(sysMsg));
+        boost::json::object stateMsg;
+        stateMsg["role"] = "system";
+        stateMsg["content"] = stateSummary;
+        msgs.push_back(std::move(stateMsg));
     }
 
     std::string body = llm::build_chat_body(msgs);
@@ -544,6 +752,8 @@ static void handleUserMessageAsync(ChatApp* app, const std::string& text)
                 std::lock_guard<std::mutex> lock(app->mtx);
                 boost::json::object am;
                 am["role"] = "assistant";
+                am["sender_name"] = "AI助手";
+                am["sender_avatar"] = "🤖";
                 if (!response.empty()) am["content"] = response;
                 if (!reasoning.empty()) am["reasoning_content"] = reasoning;
                 if (!response.empty() || !reasoning.empty())
@@ -551,6 +761,17 @@ static void handleUserMessageAsync(ChatApp* app, const std::string& text)
             }
         }
     });
+
+    if (!app->agents.empty()) {
+        std::vector<boost::json::object> histCopy;
+        {
+            std::lock_guard<std::mutex> lock(app->mtx);
+            histCopy = app->history;
+        }
+        for (auto& agent : app->agents) {
+            agent->onUserMessage(text, sender_name, histCopy);
+        }
+    }
 
     boost::json::object start;
     start["type"] = "stream_start";
@@ -748,7 +969,7 @@ void app_on_input(void* p, const char* input_json)
             std::string text(text_it->value().as_string());
             if (text[0] == '/') {
                 CHAT_LOG("[chat-in]", "command: " << text);
-                auto arr = handleCommand(text);
+                auto arr = handleCommand(app, text);
                 for (auto& item : arr)
                     app->push_output(std::move(item));
             } else {
@@ -788,7 +1009,7 @@ char* app_process(void* p, const char* input_json)
         if (text_it != obj.end() && text_it->value().is_string()) {
             std::string text(text_it->value().as_string());
             if (text[0] == '/') {
-                auto arr = handleCommand(text);
+                auto arr = handleCommand(app, text);
                 for (auto& item : arr)
                     app->push_output(std::move(item));
             } else {

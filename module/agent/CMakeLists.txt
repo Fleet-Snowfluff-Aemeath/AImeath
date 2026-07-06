@@ -18,19 +18,26 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output/lib)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output/lib)
 
 file(GLOB SRC_SOURCES CONFIGURE_DEPENDS
-    src/*.cpp
+    src/agent_server.cpp
+    src/agent_chat_participant.cpp
 )
 add_library(agent SHARED ${SRC_SOURCES})
+set(YAMLCPP_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../3rd/yaml-cpp-yaml-cpp-0.9.0/install)
+find_library(YAMLCPP_LIB yaml-cpp PATHS ${YAMLCPP_DIR}/lib NO_DEFAULT_PATH)
+if(NOT YAMLCPP_LIB)
+    find_library(YAMLCPP_LIB yaml-cpp)
+endif()
+
 target_include_directories(agent PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../core/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../app/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../llm/include
+    ${YAMLCPP_DIR}/include
 )
-target_link_libraries(agent PUBLIC Boost::json core app llm)
+target_link_libraries(agent PUBLIC Boost::json core app llm ${YAMLCPP_LIB})
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
-find_package(GTest REQUIRED)
 find_package(GTest REQUIRED)
 file(GLOB TEST_SOURCES CONFIGURE_DEPENDS
     test/*.cpp
@@ -44,39 +51,34 @@ add_custom_target(run_tests
     DEPENDS tests
 )
 
-find_package(benchmark REQUIRED)
-# ===================== 1. 定义基准测试通用函数 =====================
-function(add_benchmark target src)
-    add_executable(${target} ${src})
-    set_target_properties(${target} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output/bench)
-    target_link_libraries(${target} PRIVATE agent benchmark::benchmark)
-    target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
-endfunction()
+# Google Benchmark is optional; skip on Linux where the Windows anaconda version is incompatible
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    find_package(benchmark REQUIRED)
+    function(add_benchmark target src)
+        add_executable(${target} ${src})
+        set_target_properties(${target} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output/bench)
+        target_link_libraries(${target} PRIVATE agent benchmark::benchmark)
+        target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+    endfunction()
 
-# ===================== 2. 自动扫描 + 批量创建测试程序 =====================
-file(GLOB BENCH_SOURCES CONFIGURE_DEPENDS benchmark/*.cpp)
-set(BENCH_TARGETS "")
+    file(GLOB BENCH_SOURCES CONFIGURE_DEPENDS benchmark/*.cpp)
+    set(BENCH_TARGETS "")
+    foreach(bench_src ${BENCH_SOURCES})
+        get_filename_component(bench_name ${bench_src} NAME_WE)
+        set(target_name "${bench_name}")
+        add_benchmark(${target_name} ${bench_src})
+        list(APPEND BENCH_TARGETS ${target_name})
+    endforeach()
 
-# 循环创建所有bench目标
-foreach(bench_src ${BENCH_SOURCES})
-    get_filename_component(bench_name ${bench_src} NAME_WE)
-    set(target_name "${bench_name}")
-    add_benchmark(${target_name} ${bench_src})
-    list(APPEND BENCH_TARGETS ${target_name})
-endforeach()
+    set(BENCH_COMMANDS "")
+    foreach(target ${BENCH_TARGETS})
+        list(APPEND BENCH_COMMANDS COMMAND ${CMAKE_COMMAND} -E env LD_LIBRARY_PATH=${CMAKE_BINARY_DIR}/output/lib $<TARGET_FILE:${target}> --benchmark_min_time=0.1)
+    endforeach()
 
-# ===================== 3. 单独处理特殊依赖 ================================
-
-# ===================== 4. 自动拼接运行命令（修复语法错误） =====================
-set(BENCH_COMMANDS "")
-foreach(target ${BENCH_TARGETS})
-    list(APPEND BENCH_COMMANDS COMMAND ${CMAKE_COMMAND} -E env LD_LIBRARY_PATH=${CMAKE_BINARY_DIR}/output/lib $<TARGET_FILE:${target}> --benchmark_min_time=0.1)
-endforeach()
-
-# 自定义目标：一键编译+运行所有基准测试
-add_custom_target(run_bench
-    ${BENCH_COMMANDS}
-    DEPENDS ${BENCH_TARGETS}
-    COMMENT "Running all benchmarks..."
-)
+    add_custom_target(run_bench
+        ${BENCH_COMMANDS}
+        DEPENDS ${BENCH_TARGETS}
+        COMMENT "Running all benchmarks..."
+    )
+endif()
 endif()

@@ -1,0 +1,7 @@
+name: "默认助手"
+avatar: "🤖"
+system_prompt: "你是默认AI助手。你可以帮助用户打开和控制应用程序。"
+model: "deepseek-v4-flash"
+temperature: 0.7
+max_tokens: 4096
+enable_tools: true

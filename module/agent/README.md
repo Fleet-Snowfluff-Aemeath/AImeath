@@ -33,15 +33,28 @@ class IAgent {
     virtual bool controlApp(const std::string& name, commandJson) = 0;
     virtual bool closeApp(const std::string& name) = 0;
     virtual void stop() = 0;
+    // Chat
+    virtual bool chatSend(const std::string& text) = 0;
+    // FileManager
+    virtual bool fileList(const std::string& path) = 0;
+    virtual bool fileRead(const std::string& path) = 0;
+    virtual bool fileWrite(const std::string& path, const std::string& content) = 0;
+    virtual bool fileMkdir(const std::string& path) = 0;
+    virtual bool fileRemove(const std::string& path) = 0;
+    // Terminal
+    virtual bool terminalExec(const std::string& command) = 0;
+    virtual bool terminalStdin(const std::string& data) = 0;
 };
 ```
 
 ## 工具定义
 
-Agent 通过 DeepSeek function_call 使用以下工具：
+Agent 通过 DeepSeek function_call 使用以下工具。
+
+> ⚠️ **关键规则**：用户要求执行 shell 命令时，必须使用 **terminal_exec**，严禁先 open_app terminal 再尝试控制。terminal_exec 是执行 shell 命令的唯一方式，直接返回输出。
 
 | 工具 | 参数 | 描述 |
-|---|---|---|
+|---|---|---|---|
 | open_app | app(string), width(int), height(int) | 打开应用 |
 | control_app | app(string), value(int), coord(array) | 操控应用（方向/落子） |
 | close_app | app(string), window_id(string) | 关闭应用或指定窗口 |
@@ -50,7 +63,11 @@ Agent 通过 DeepSeek function_call 使用以下工具：
 | chat_send | text(string) | 向聊天发送消息 |
 | file_list | path(string) | 列出目录内容 |
 | file_read | path(string) | 读取文件内容 |
+| file_write | path(string), content(string) | 写入文件内容 |
+| file_mkdir | path(string) | 创建目录 |
+| file_remove | path(string) | 删除文件或目录 |
 | terminal_exec | command(string) | 执行终端命令 |
+| terminal_stdin | data(string) | 向终端发送输入数据 |
 
 ## 通信协议
 
