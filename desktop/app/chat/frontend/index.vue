@@ -191,11 +191,7 @@ ch.onMessage((data) => {
     }
   } else if (data.type === 'stream_end') {
     delete streamIdxBySender[sender || '']
-    stopPoll()
-    if (data.msg) {
-      for (const key in streamIdxBySender) delete streamIdxBySender[key]
-      messages.value.push({ text: '⚠️ ' + data.msg, isSelf: false, sender, senderAvatar })
-    }
+    if (Object.keys(streamIdxBySender).length === 0) stopPoll()
     scrollBottom()
   } else if (data.type === 'agent_msg') {
     messages.value.push({
