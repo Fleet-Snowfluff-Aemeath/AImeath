@@ -97,6 +97,7 @@ struct ChatApp : std::enable_shared_from_this<ChatApp>
 
     std::string current_sender_name = "AI助手";
     std::string current_sender_avatar = "🤖";
+    std::string user_display_name;
 
     void push_output(boost::json::value val)
     {
@@ -966,6 +967,12 @@ void app_on_input(void* p, const char* input_json)
                 end["type"] = "stream_end";
                 end["msg"] = "stopped";
                 app->push_output(std::move(end));
+                return;
+            }
+            if (action == "init") {
+                auto name = obj.find("display_name");
+                if (name != obj.end() && name->value().is_string())
+                    app->user_display_name = name->value().as_string().c_str();
                 return;
             }
         }
