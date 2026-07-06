@@ -14,10 +14,13 @@
 #include "llm_utils.hpp"
 #include "config.hpp"
 #include "ws_server.hpp"
+#include "tool_registry.hpp"
 
 namespace asio = boost::asio;
 
 namespace agent {
+
+static boost::json::array s_agentTools;
 
 #define AGENT_LOG(level, msg) \
     do { \
@@ -67,319 +70,12 @@ static boost::json::object buildSystemMsg()
 
 boost::json::array AgentServer::buildTools()
 {
-    boost::json::array tools;
-
-    {
-        boost::json::object t;
-        t["type"] = "function";
-        boost::json::object f;
-        f["name"] = "open_app";
-        f["description"] = "打开一个应用程序窗口. 支持的应用: snake (贪吃蛇), gomoku (五子棋), pacman (吃豆人), go (围棋), chat (聊天), terminal (终端), filemanager (文件管理器). NOTE: 如果用户想浏览/查看/管理文件, 请使用 file_list/file_read/file_write 等工具, 不要打开 filemanager 应用. 只有用户明确要求打开文件管理器可视化界面时才使用 open_app filemanager. 同理, shell 命令用 terminal_exec, 不需要打开 terminal.";
-        boost::json::object params;
-        params["type"] = "object";
-        boost::json::object props;
-        boost::json::object appProp;
-        appProp["type"] = "string";
-        appProp["description"] = "应用名称: snake(贪吃蛇), gomoku(五子棋), pacman(吃豆人), go(围棋), chat(聊天), terminal(终端), filemanager(文件管理器)";
-        props["app"] = appProp;
-        boost::json::object wProp;
-        wProp["type"] = "integer";
-        wProp["description"] = "棋盘宽度 (游戏类应用, default 20)";
-        props["width"] = wProp;
-        boost::json::object hProp;
-        hProp["type"] = "integer";
-        hProp["description"] = "棋盘高度 (游戏类应用, default 20)";
-        props["height"] = hProp;
-        params["properties"] = props;
-        boost::json::array required;
-        required.push_back(boost::json::string("app"));
-        params["required"] = required;
-        f["parameters"] = params;
-        t["function"] = f;
-        tools.push_back(t);
-    }
-
-    {
-        boost::json::object t;
-        t["type"] = "function";
-        boost::json::object f;
-        f["name"] = "control_app";
-        f["description"] =
-            "向已打开的应用发送操作指令. For games: direction values 0=up, 1=down, 2=left, 3=right; "
-            "For go: -1=pass, -2=resign. "
-            "NOTE: This tool ONLY works for game apps (snake, gomoku, pacman, go). "
-            "For running shell commands, use terminal_exec instead. "
-            "For sending chat messages, use chat_send instead. "
-            "For browsing files, use file_list/file_read instead.";
-        boost::json::object params;
-        params["type"] = "object";
-        boost::json::object props;
-        boost::json::object appProp;
-        appProp["type"] = "string";
-        appProp["description"] = "目标应用名称";
-        props["app"] = appProp;
-        boost::json::object valProp;
-        valProp["type"] = "integer";
-        valProp["description"] = "操作值 (游戏方向等, 仅游戏类应用)";
-        props["value"] = valProp;
-        params["properties"] = props;
-        boost::json::array required;
-        required.push_back(boost::json::string("app"));
-        required.push_back(boost::json::string("value"));
-        params["required"] = required;
-        f["parameters"] = params;
-        t["function"] = f;
-        tools.push_back(t);
-    }
-
-    {
-        boost::json::object t;
-        t["type"] = "function";
-        boost::json::object f;
-        f["name"] = "close_app";
-        f["description"] = "关闭一个已打开的应用窗口. 可用 list_active_windows 获取 window_id 来指定关闭哪一个.";
-        boost::json::object params;
-        params["type"] = "object";
-        boost::json::object props;
-        boost::json::object appProp;
-        appProp["type"] = "string";
-        appProp["description"] = "要关闭的应用名称";
-        props["app"] = appProp;
-        boost::json::object widProp;
-        widProp["type"] = "string";
-        widProp["description"] = "可选, 指定要关闭的窗口 ID (从 list_active_windows 获取). 不指定则关闭该应用最新的窗口.";
-        props["window_id"] = widProp;
-        params["properties"] = props;
-        boost::json::array required;
-        required.push_back(boost::json::string("app"));
-        params["required"] = required;
-        f["parameters"] = params;
-        t["function"] = f;
-        tools.push_back(t);
-    }
-
-    {
-        boost::json::object t;
-        t["type"] = "function";
-        boost::json::object f;
-        f["name"] = "get_app_state";
-        f["description"] = "查询一个应用的当前状态. 如果返回 success:false 则表示该应用未在运行. 先用 list_active_windows 确认哪些应用在运行再查询.";
-        boost::json::object params;
-        params["type"] = "object";
-        boost::json::object props;
-        boost::json::object appProp;
-        appProp["type"] = "string";
-        appProp["description"] = "应用名称";
-        props["app"] = appProp;
-        params["properties"] = props;
-        boost::json::array required;
-        required.push_back(boost::json::string("app"));
-        params["required"] = required;
-        f["parameters"] = params;
-        t["function"] = f;
-        tools.push_back(t);
-    }
-
-    {
-        boost::json::object t;
-        t["type"] = "function";
-        boost::json::object f;
-        f["name"] = "chat_send";
-        f["description"] = "向当前用户或指定聊天实例发送消息。不指定 instance 时回复当前用户；指定 instance 时发送到对应聊天窗口(chat-0, chat-1等)。";
-        boost::json::object params;
-        params["type"] = "object";
-        boost::json::object props;
-        boost::json::object textProp;
-        textProp["type"] = "string";
-        textProp["description"] = "要发送的消息内容";
-        props["text"] = textProp;
-        boost::json::object instProp;
-        instProp["type"] = "integer";
-        instProp["description"] = "目标聊天实例编号(0,1,2...)，不指定则回复当前用户";
-        props["instance"] = instProp;
-        params["properties"] = props;
-        boost::json::array required;
-        required.push_back(boost::json::string("text"));
-        params["required"] = required;
-        f["parameters"] = params;
-        t["function"] = f;
-        tools.push_back(t);
-    }
-
-    {
-        boost::json::object t;
-        t["type"] = "function";
-        boost::json::object f;
-        f["name"] = "file_list";
-        f["description"] = "列出指定目录中的文件和文件夹. 当用户想浏览/查看文件夹内容时, 请使用此工具而非打开文件管理器. 这是查看目录内容的唯一方式.";
-        boost::json::object params;
-        params["type"] = "object";
-        boost::json::object props;
-        boost::json::object pathProp;
-        pathProp["type"] = "string";
-        pathProp["description"] = "目录路径, 默认为 '/'";
-        props["path"] = pathProp;
-        params["properties"] = props;
-        boost::json::array required;
-        f["parameters"] = params;
-        t["function"] = f;
-        tools.push_back(t);
-    }
-
-    {
-        boost::json::object t;
-        t["type"] = "function";
-        boost::json::object f;
-        f["name"] = "file_read";
-        f["description"] = "读取指定文件的内容. 可以读取文本文件、代码文件、配置文件等. 使用绝对路径.";
-        boost::json::object params;
-        params["type"] = "object";
-        boost::json::object props;
-        boost::json::object pathProp;
-        pathProp["type"] = "string";
-        pathProp["description"] = "文件路径";
-        props["path"] = pathProp;
-        params["properties"] = props;
-        boost::json::array required;
-        required.push_back(boost::json::string("path"));
-        params["required"] = required;
-        f["parameters"] = params;
-        t["function"] = f;
-        tools.push_back(t);
-    }
-
-    {
-        boost::json::object t;
-        t["type"] = "function";
-        boost::json::object f;
-        f["name"] = "file_write";
-        f["description"] = "向指定文件写入内容. 如果文件不存在则创建, 如果已存在则覆盖. 可用于创建新文件、修改文件内容等. 使用绝对路径.";
-        boost::json::object params;
-        params["type"] = "object";
-        boost::json::object props;
-        boost::json::object pathProp;
-        pathProp["type"] = "string";
-        pathProp["description"] = "文件路径";
-        props["path"] = pathProp;
-        boost::json::object contentProp;
-        contentProp["type"] = "string";
-        contentProp["description"] = "要写入的内容";
-        props["content"] = contentProp;
-        params["properties"] = props;
-        boost::json::array required;
-        required.push_back(boost::json::string("path"));
-        required.push_back(boost::json::string("content"));
-        params["required"] = required;
-        f["parameters"] = params;
-        t["function"] = f;
-        tools.push_back(t);
-    }
-
-    {
-        boost::json::object t;
-        t["type"] = "function";
-        boost::json::object f;
-        f["name"] = "file_mkdir";
-        f["description"] = "创建一个新目录. 如果父目录不存在也会尝试创建. 使用绝对路径.";
-        boost::json::object params;
-        params["type"] = "object";
-        boost::json::object props;
-        boost::json::object pathProp;
-        pathProp["type"] = "string";
-        pathProp["description"] = "目录路径";
-        props["path"] = pathProp;
-        params["properties"] = props;
-        boost::json::array required;
-        required.push_back(boost::json::string("path"));
-        params["required"] = required;
-        f["parameters"] = params;
-        t["function"] = f;
-        tools.push_back(t);
-    }
-
-    {
-        boost::json::object t;
-        t["type"] = "function";
-        boost::json::object f;
-        f["name"] = "file_remove";
-        f["description"] = "删除指定文件或空目录. 只能删除空目录, 非空目录无法删除. 使用绝对路径.";
-        boost::json::object params;
-        params["type"] = "object";
-        boost::json::object props;
-        boost::json::object pathProp;
-        pathProp["type"] = "string";
-        pathProp["description"] = "要删除的文件或目录路径";
-        props["path"] = pathProp;
-        params["properties"] = props;
-        boost::json::array required;
-        required.push_back(boost::json::string("path"));
-        params["required"] = required;
-        f["parameters"] = params;
-        t["function"] = f;
-        tools.push_back(t);
-    }
-
-    {
-        boost::json::object t;
-        t["type"] = "function";
-        boost::json::object f;
-        f["name"] = "terminal_exec";
-        f["description"] = "在终端中执行一条 shell 命令并获取输出. 当用户想执行 ls/pwd/echo/cat/date 等命令时, 请直接使用此工具, 不要先打开终端应用. 可以执行任何命令如 ls (列出文件), pwd (当前路径), echo (输出文字), cat (查看文件), whoami (当前用户), date (日期) 等. 这是执行 shell 命令的唯一方式. 不需要先 open_app terminal, 直接使用此工具即可.";
-        boost::json::object params;
-        params["type"] = "object";
-        boost::json::object props;
-        boost::json::object cmdProp;
-        cmdProp["type"] = "string";
-        cmdProp["description"] = "要执行的命令";
-        props["command"] = cmdProp;
-        params["properties"] = props;
-        boost::json::array required;
-        required.push_back(boost::json::string("command"));
-        params["required"] = required;
-        f["parameters"] = params;
-        t["function"] = f;
-        tools.push_back(t);
-    }
-
-    {
-        boost::json::object t;
-        t["type"] = "function";
-        boost::json::object f;
-        f["name"] = "terminal_stdin";
-        f["description"] = "向正在运行的终端命令发送标准输入数据 (用于交互式命令).";
-        boost::json::object params;
-        params["type"] = "object";
-        boost::json::object props;
-        boost::json::object dataProp;
-        dataProp["type"] = "string";
-        dataProp["description"] = "要发送的输入数据";
-        props["data"] = dataProp;
-        params["properties"] = props;
-        boost::json::array required;
-        required.push_back(boost::json::string("data"));
-        params["required"] = required;
-        f["parameters"] = params;
-        t["function"] = f;
-        tools.push_back(t);
-    }
-
-    {
-        boost::json::object t;
-        t["type"] = "function";
-        boost::json::object f;
-        f["name"] = "list_active_windows";
-        f["description"] = "列出当前所有活跃的应用窗口及其 session 信息. 这是获取当前运行应用数量的唯一可靠方法. 返回包含 count 字段表示窗口总数.";
-        boost::json::object params;
-        params["type"] = "object";
-        boost::json::object props;
-        params["properties"] = props;
-        f["parameters"] = params;
-        t["function"] = f;
-        tools.push_back(t);
-    }
-
-    return tools;
+    static boost::json::array cached;
+    if (cached.empty())
+        cached = loadToolsFromYaml("module/agent/config/tools.yml");
+    return cached;
 }
+
 
 void AgentServer::registerBuiltinTools()
 {
@@ -492,7 +188,9 @@ void AgentServer::handleUserMessage(const std::string& text)
     for (auto& m : historyCopy) msgs.push_back(m);
 
     std::string body = llm::build_chat_body(msgs);
-    boost::json::array tools = buildTools();
+    if (s_agentTools.empty())
+        s_agentTools = loadToolsFromYaml("module/agent/config/tools.yml");
+    boost::json::array tools = s_agentTools;
 
     boost::json::value parsed = boost::json::parse(body);
     if (parsed.is_object()) {
