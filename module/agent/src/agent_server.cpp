@@ -35,36 +35,14 @@ static boost::json::array s_agentTools;
 
 static boost::json::object buildSystemMsg()
 {
+    static std::string cached;
+    if (cached.empty()) {
+        YAML::Node config = YAML::LoadFile("module/agent/config/agent_prompt.yml");
+        cached = config["system_prompt"].as<std::string>();
+    }
     boost::json::object msg;
     msg["role"] = "system";
-    msg["content"] =
-        "You are an AI Agent assistant. You can help users by opening and controlling applications.\n"
-        "When a user asks about open apps or window count, ALWAYS call list_active_windows first to get accurate data. Do NOT guess or enumerate all possible app types.\n"
-        "When a user asks you to do something, use the available tools to execute actions.\n"
-        "After each tool execution, briefly explain what you did in Chinese.\n"
-        "CRITICAL RULES:\n"
-        "- NEVER open a terminal app when user wants to run a shell command (ls, pwd, echo, cat, etc.) - use terminal_exec instead.\n"
-        "- terminal_exec runs any command and returns output directly. DO NOT use open_app terminal + control_app for commands.\n"
-        "- Only use open_app with 'terminal' if the user explicitly says they want to see a terminal window visual interface.\n"
-        "- NEVER open a filemanager app when user wants to browse/list/read files - use file_list/file_read instead.\n"
-        "- file_list is for browsing directory contents (like ls). file_read is for reading file contents.\n"
-        "- file_write/file_mkdir/file_remove are for file operations. DO NOT open filemanager app for these.\n"
-        "- Only use open_app with 'filemanager' if the user explicitly asks to see the visual file manager window.\n"
-        "Available tools:\n"
-        "- open_app: open an application window (snake, gomoku, pacman, go, chat, terminal, filemanager)\n"
-        "- control_app: send game direction via integer value (0=up,1=down,2=left,3=right)\n"
-        "- close_app: close an application\n"
-        "- get_app_state: query an app's current status\n"
-        "- chat_send: send a message to the chat application\n"
-        "- file_list: list files and directories in a specified path\n"
-        "- file_read: read the content of a file\n"
-        "- file_write: write content to a file (create or overwrite)\n"
-        "- file_mkdir: create a new directory\n"
-        "- file_remove: delete a file or empty directory\n"
-        "- terminal_exec: execute a shell command and get output (use this for running ls, pwd, echo, cat, etc.)\n"
-        "- terminal_stdin: send input data to a running terminal command\n"
-        "- list_active_windows: list all open windows with their session IDs\n"
-        "Keep responses concise and friendly.";
+    msg["content"] = cached;
     return msg;
 }
 
@@ -79,19 +57,11 @@ boost::json::array AgentServer::buildTools()
 
 void AgentServer::registerBuiltinTools()
 {
-    tools_["open_app"] = {"open_app", "打开应用", {}, nullptr};
-    tools_["control_app"] = {"control_app", "操控应用", {}, nullptr};
-    tools_["close_app"] = {"close_app", "关闭应用", {}, nullptr};
-    tools_["get_app_state"] = {"get_app_state", "查询应用状态", {}, nullptr};
-    tools_["chat_send"] = {"chat_send", "向聊天应用发送消息", {}, nullptr};
-    tools_["file_list"] = {"file_list", "列出目录文件", {}, nullptr};
-    tools_["file_read"] = {"file_read", "读取文件内容", {}, nullptr};
-    tools_["file_write"] = {"file_write", "写入文件内容", {}, nullptr};
-    tools_["file_mkdir"] = {"file_mkdir", "创建目录", {}, nullptr};
-    tools_["file_remove"] = {"file_remove", "删除文件或目录", {}, nullptr};
-    tools_["terminal_exec"] = {"terminal_exec", "在终端执行命令", {}, nullptr};
-    tools_["terminal_stdin"] = {"terminal_stdin", "向终端写入输入", {}, nullptr};
-    tools_["list_active_windows"] = {"list_active_windows", "列出活跃窗口", {}, nullptr};
+    YAML::Node config = YAML::LoadFile("module/agent/config/tools.yml");
+    for (auto t : config["tools"]) {
+        std::string name = t["name"].as<std::string>();
+        tools_[name] = {name, "", {}, nullptr};
+    }
 }
 
 AgentServer::AgentServer()
