@@ -996,7 +996,7 @@ void app_on_input(void* p, const char* input_json)
                 } else {
                     app->streaming = true;
                     ++app->round;
-                    handleUserMessageAsync(app, text);
+                    handleUserMessageAsync(app, text, app->user_display_name);
                 }
             }
         }
@@ -1031,7 +1031,7 @@ char* app_process(void* p, const char* input_json)
                 else {
                     app->streaming = true;
                     ++app->round;
-                    handleUserMessageAsync(app, text);
+                    handleUserMessageAsync(app, text, app->user_display_name);
                 }
             }
         }
