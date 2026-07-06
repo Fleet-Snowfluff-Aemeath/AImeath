@@ -47,6 +47,7 @@
           <div v-html="renderMarkdown(m.text)"></div>
         </div>
         </div>
+        </div>
       </div>
     </main>
     <footer class="chat-footer">
