@@ -12,7 +12,7 @@ namespace {
 boost::json::array& llmTestTools() {
     static boost::json::array tools;
     if (tools.empty()) {
-        YAML::Node config = YAML::LoadFile("module/agent/config/tools.yml");
+        YAML::Node config = YAML::LoadFile("../../agent/config/tools.yml");
         for (auto t : config["tools"]) {
             boost::json::object tool;
             tool["type"] = "function";
@@ -426,7 +426,7 @@ TEST(LlmUtilsTest, InjectToolsDisabled)
 {
     std::string body = R"({"model":"test","messages":[]})";
     std::string original = body;
-    llm::inject_tools(body, false);
+    llm::inject_tools(body, false, {}, llmTestTools());
     EXPECT_EQ(body, original);
 }
 
@@ -434,7 +434,7 @@ TEST(LlmUtilsTest, InjectToolsOnNonObject)
 {
     std::string body = R"("just a string, not an object")";
     std::string original = body;
-    llm::inject_tools(body, true);
+    llm::inject_tools(body, true, {}, llmTestTools());
     EXPECT_EQ(body, original);
 }
 

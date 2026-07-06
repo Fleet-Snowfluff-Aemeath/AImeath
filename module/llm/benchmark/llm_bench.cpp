@@ -2,6 +2,44 @@
 #include "llm_client.hpp"
 #include "llm_utils.hpp"
 #include <boost/asio.hpp>
+#include <yaml-cpp/yaml.h>
+
+namespace {
+boost::json::array& benchTools() {
+    static boost::json::array tools;
+    if (tools.empty()) {
+        YAML::Node config = YAML::LoadFile("../../agent/config/tools.yml");
+        for (auto t : config["tools"]) {
+            boost::json::object tool;
+            tool["type"] = "function";
+            boost::json::object func;
+            func["name"] = t["name"].as<std::string>();
+            func["description"] = t["description"].as<std::string>();
+            boost::json::object params;
+            params["type"] = "object";
+            boost::json::object props;
+            if (t["params"]["properties"])
+                for (auto prop : t["params"]["properties"]) {
+                    boost::json::object p;
+                    p["type"] = prop.second["type"].as<std::string>();
+                    if (prop.second["description"])
+                        p["description"] = prop.second["description"].as<std::string>();
+                    props[prop.first.as<std::string>()] = std::move(p);
+                }
+            params["properties"] = std::move(props);
+            boost::json::array required;
+            if (t["params"]["required"])
+                for (auto r : t["params"]["required"])
+                    required.push_back(boost::json::string(r.as<std::string>()));
+            params["required"] = std::move(required);
+            func["parameters"] = std::move(params);
+            tool["function"] = std::move(func);
+            tools.push_back(std::move(tool));
+        }
+    }
+    return tools;
+}
+}
 
 // ====== LlmClient ======
 

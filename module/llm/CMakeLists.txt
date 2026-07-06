@@ -50,8 +50,11 @@ find_package(benchmark REQUIRED)
 function(add_benchmark target src)
     add_executable(${target} ${src})
     set_target_properties(${target} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output/bench)
-    target_link_libraries(${target} PRIVATE llm benchmark::benchmark)
-    target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+    target_link_libraries(${target} PRIVATE llm benchmark::benchmark ${YAMLCPP_LIB})
+    target_include_directories(${target} PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${YAMLCPP_DIR}/include
+    )
 endfunction()
 
 # ===================== 2. 自动扫描 + 批量创建测试程序 =====================
