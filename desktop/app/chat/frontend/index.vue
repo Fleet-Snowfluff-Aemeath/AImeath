@@ -11,6 +11,7 @@
         :key="i"
         :class="['msg', m.isSelf ? 'msg-self' : 'msg-other']"
       >
+        <div class="msg-inner">
         <div v-if="m.isSelf && m.sender" class="msg-sender msg-sender-self">
           <span class="sender-name">{{ m.sender }}</span>
           <span v-if="m.senderAvatar" class="sender-avatar">{{ m.senderAvatar }}</span>
@@ -49,6 +50,7 @@
             <div class="reasoning-content">{{ m.reasoning }}</div>
           </details>
           <div v-html="renderMarkdown(m.text)"></div>
+        </div>
         </div>
       </div>
     </main>
@@ -387,6 +389,20 @@ onBeforeUnmount(() => ch.close())
   justify-content: flex-start;
 }
 
+.msg-inner {
+  display: flex;
+  flex-direction: column;
+  max-width: 70%;
+}
+
+.msg-self .msg-inner {
+  align-items: flex-end;
+}
+
+.msg-other .msg-inner {
+  align-items: flex-start;
+}
+
 .msg-sender {
   display: flex;
   align-items: center;
@@ -414,7 +430,7 @@ onBeforeUnmount(() => ch.close())
 }
 
 .bubble {
-  max-width: 70%;
+  max-width: 100%;
   padding: 10px 16px;
   border-radius: 18px;
   font-size: 15px;
