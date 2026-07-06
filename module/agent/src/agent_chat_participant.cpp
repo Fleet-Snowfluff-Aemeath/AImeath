@@ -78,6 +78,8 @@ void AgentChatParticipant::onUserMessage(
     };
 
     auto pushStream = [this](boost::json::object ev) {
+        if (!ev.contains("sender_name")) ev["sender_name"] = profile_.name;
+        if (!ev.contains("sender_avatar")) ev["sender_avatar"] = profile_.avatar;
         StreamCallback cb;
         {
             std::lock_guard<std::mutex> lock(mtx_);

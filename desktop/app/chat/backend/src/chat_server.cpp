@@ -712,9 +712,6 @@ static void handleUserMessageAsync(ChatApp* app, const std::string& text, const 
         }
     }
 
-    boost::json::object start;
-    start["type"] = "stream_start";
-    app->push_output(std::move(start));
 }
 
 static std::string buildSystemMsg() {
