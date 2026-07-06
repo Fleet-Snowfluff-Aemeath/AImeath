@@ -440,6 +440,53 @@ onBeforeUnmount(() => ch.close())
   font-weight: 500;
 }
 
+.msg-wrapper {
+  display: flex;
+  flex-direction: column;
+  max-width: 70%;
+}
+
+.msg-self .msg-wrapper {
+  align-items: flex-end;
+}
+
+.msg-other .msg-wrapper {
+  align-items: flex-start;
+}
+
+.msg-name-row {
+  font-size: 12px;
+  color: #6b7280;
+  padding: 0 12px 2px;
+  font-weight: 500;
+}
+
+.msg-content-row {
+  display: flex;
+  gap: 6px;
+}
+
+.msg-row-self {
+  flex-direction: row-reverse;
+}
+
+.msg-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  flex-shrink: 0;
+  background: #e5e7eb;
+  margin-top: 10px;
+}
+
+.msg-other .msg-avatar {
+  background: #dbeafe;
+}
+
 .bubble {
   max-width: 100%;
   padding: 10px 16px;
