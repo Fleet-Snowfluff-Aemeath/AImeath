@@ -72,6 +72,12 @@ static const char* displayName(const std::string& appName)
     return it != names.end() ? it->second : appName.c_str();
 }
 
+static std::string displayAvatar(const std::string& avatar) {
+    if (avatar.empty()) return "";
+    if (avatar[0] == '/' || avatar.rfind("http", 0) == 0) return "🤖";
+    return avatar;
+}
+
 struct ChatApp : std::enable_shared_from_this<ChatApp>
 {
     std::vector<boost::json::object> history;
