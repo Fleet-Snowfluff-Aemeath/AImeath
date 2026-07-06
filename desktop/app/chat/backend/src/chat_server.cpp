@@ -833,8 +833,13 @@ static void handleUserMessageAsync(ChatApp* app, const std::string& text, const 
         auto oldCallbacks = std::make_shared<std::vector<agent::IAgentChat::ResponseCallback>>();
         for (auto& ag : app->agents) oldCallbacks->push_back(nullptr);
 
+        std::string msgText = text;
+        std::string msgSender = sender_name;
+        std::string msgTarget = targetAgent;
+        std::string msgActual = actualText;
+
         std::function<void()> processNext;
-        processNext = [app, idx, &text, &sender_name, &targetAgent, &actualText, oldCallbacks, &processNext]() {
+        processNext = [app, idx, msgText, msgSender, msgTarget, msgActual, oldCallbacks, &processNext]() {
             if (app->cancelled) return;
             int i = (*idx)++;
             if (i >= static_cast<int>(app->agents.size())) {
@@ -850,11 +855,11 @@ static void handleUserMessageAsync(ChatApp* app, const std::string& text, const 
                 h = app->history;
             }
 
-            if (!targetAgent.empty()) {
-                if (app->agents[i]->getName() != targetAgent) { processNext(); return; }
-                app->agents[i]->onUserMessage(actualText, sender_name, h);
+            if (!msgTarget.empty()) {
+                if (app->agents[i]->getName() != msgTarget) { processNext(); return; }
+                app->agents[i]->onUserMessage(msgActual, msgSender, h);
             } else {
-                app->agents[i]->onUserMessage(text, sender_name, h);
+                app->agents[i]->onUserMessage(msgText, msgSender, h);
             }
 
             (*oldCallbacks)[i] = [app, i, processNext](boost::json::object msg) {
