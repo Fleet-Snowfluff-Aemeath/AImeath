@@ -128,9 +128,6 @@ const connected = ref(false)
 const streamingIdx = ref(-1)
 const streamIdxBySender = reactive({})
 let pollTimer = null
-let deltaBuffer = ''
-let reasoningBuffer = ''
-let rafPending = false
 
 const statusText = computed(() => connected.value ? '已连接' : '未连接')
 const statusClass = computed(() => connected.value ? 'status-ok' : 'status-err')
@@ -152,38 +149,14 @@ ch.onOpen(() => {
     setTimeout(refreshAgents, 500)
   })
 ch.onError(() => { connected.value = false })
-ch.onClose(() => { connected.value = false; clearStream(); stopPoll() })
+ch.onClose(() => { connected.value = false; stopPoll() })
 
 function stopPoll() {
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
 }
 
 function clearStream() {
-  deltaBuffer = ''
-  reasoningBuffer = ''
-  rafPending = false
   Object.keys(streamIdxBySender).forEach(k => delete streamIdxBySender[k])
-}
-
-function flushStream(sender) {
-  const idx = streamIdxBySender[sender]
-  if (idx == null) return
-  if (deltaBuffer) {
-    messages.value[idx].text += deltaBuffer
-    deltaBuffer = ''
-  }
-  if (reasoningBuffer) {
-    messages.value[idx].reasoning += reasoningBuffer
-    reasoningBuffer = ''
-  }
-  scrollBottom()
-}
-
-function scheduleFlush(sender) {
-  if (!rafPending) {
-    rafPending = true
-    requestAnimationFrame(() => flushStream(sender))
-  }
 }
 
 ch.onMessage((data) => {
@@ -212,19 +185,17 @@ ch.onMessage((data) => {
     scrollBottom()
   } else if (data.type === 'delta') {
     const idx = streamIdxBySender[sender || '']
-    if (idx != null) messages.value[idx].text += data.text
-    scrollBottom() else if (data.type === 'stream_end') {
-    const idx = streamIdxBySender[sender || '']
     if (idx != null) {
-      flushStream(sender || '')
-      delete streamIdxBySender[sender || '']
+      messages.value[idx].text += data.text
+      scrollBottom()
     }
-    clearStream()
+  } else if (data.type === 'stream_end') {
+    delete streamIdxBySender[sender || '']
     stopPoll()
-    if (data.msg && streamingIdx.value >= 0) {
-      messages.value[streamingIdx.value].text = '⚠️ ' + data.msg
+    if (data.msg) {
+      for (const key in streamIdxBySender) delete streamIdxBySender[key]
+      messages.value.push({ text: '⚠️ ' + data.msg, isSelf: false, sender, senderAvatar })
     }
-    streamingIdx.value = -1
     scrollBottom()
   } else if (data.type === 'agent_msg') {
     messages.value.push({
@@ -359,7 +330,6 @@ function stopStream() {
   if (WID) p.window_id = WID
   ch.send(p)
   clearStream()
-  streamingIdx.value = -1
 }
 
 function addAgent() {
