@@ -195,8 +195,8 @@ ch.onMessage((data) => {
       const lines = data.text.split('\n')
       agents.value = []
       for (let i = 1; i < lines.length; i++) {
-        const m = lines[i].match(/(\S+)\s+(\S+)/)
-        if (m) agents.value.push({ avatar: fixAvatar(m[1]), name: m[2] })
+        const m = lines[i].match(/^\d+\.\s+(\S+)\s+(.+)$/)
+        if (m) agents.value.push({ avatar: fixAvatar(m[1]), name: m[2].trim() })
       }
     }
     messages.value.push({ isSelf: false, type: 'embed', kind: data.kind, url: data.url, title: data.title, name: data.name, text: data.text || '', sender, senderAvatar })
