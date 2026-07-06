@@ -376,7 +376,7 @@ function removeAgent(name) {
 }
 
 function fixAvatar(av) {
-  return /^(https?:|\/)/i.test(av) ? '🤖' : av
+  return /^(https?:|\/)/i.test((av || '').trim()) ? '🤖' : av
 }
 
 function refreshAgents() {
