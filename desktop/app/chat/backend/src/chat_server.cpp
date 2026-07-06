@@ -888,15 +888,6 @@ static void handleUserMessageAsync(ChatApp* app, const std::string& text, const 
 
 }
 
-static std::string buildSystemMsg() {
-    static std::string cached;
-    if (cached.empty()) {
-        YAML::Node config = YAML::LoadFile("module/agent/config/agent_prompt.yml");
-        cached = config["system_prompt"].as<std::string>();
-    }
-    return cached;
-}
-
 static boost::json::array& chatToolDefs() {
     static boost::json::array tools;
     if (tools.empty())
