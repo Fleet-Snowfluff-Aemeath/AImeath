@@ -77,7 +77,6 @@
         <div v-if="showMentions && filteredAgents.length" class="mention-dropdown">
           <div v-for="a in filteredAgents" :key="a.name" class="mention-item"
             @mousedown.prevent @click="selectMention(a.name)">
-            <span class="mention-avatar">{{ a.avatar }}</span>
             <span class="mention-name">{{ a.name }}</span>
           </div>
         </div>
@@ -197,7 +196,7 @@ ch.onMessage((data) => {
       agents.value = []
       for (let i = 1; i < lines.length; i++) {
         const m = lines[i].match(/(\S+)\s+(\S+)/)
-        if (m) agents.value.push({ avatar: m[1], name: m[2] })
+        if (m) agents.value.push({ avatar: fixAvatar(m[1]), name: m[2] })
       }
     }
     messages.value.push({ isSelf: false, type: 'embed', kind: data.kind, url: data.url, title: data.title, name: data.name, text: data.text || '', sender, senderAvatar })

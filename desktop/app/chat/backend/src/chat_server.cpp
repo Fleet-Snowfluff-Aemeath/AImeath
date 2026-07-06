@@ -72,6 +72,18 @@ static const char* displayName(const std::string& appName)
     return it != names.end() ? it->second : appName.c_str();
 }
 
+static std::string displayAvatar(const std::string& avatar) {
+    if (avatar.empty()) return "";
+    if (avatar[0] == '/' || avatar.rfind("http", 0) == 0) return "🤖";
+    return avatar;
+}
+
+static std::string displayAvatar(const std::string& avatar) {
+    if (avatar.empty()) return "";
+    if (avatar[0] == '/' || avatar.rfind("http", 0) == 0) return "🤖";
+    return avatar;
+}
+
 struct ChatApp : std::enable_shared_from_this<ChatApp>
 {
     std::vector<boost::json::object> history;
@@ -177,7 +189,7 @@ static boost::json::array handleCommand(ChatApp* app, const std::string& text)
             std::string agentList = "房间AI助手列表 (" + std::to_string(app->agents.size()) + "):\n";
             for (size_t i = 0; i < app->agents.size(); ++i) {
                 auto& a = app->agents[i];
-                agentList += std::to_string(i + 1) + ". " + a->getAvatar() + " " + a->getName() + "\n";
+                agentList += std::to_string(i + 1) + ". " + displayAvatar(a->getAvatar()) + " " + a->getName() + "\n";
             }
             embed["kind"] = "text";
             embed["text"] = agentList;
@@ -186,7 +198,7 @@ static boost::json::array handleCommand(ChatApp* app, const std::string& text)
             auto agents = agent::loadAgentsFromDir(profileDir);
             std::string list = "可用AI助手配置:\n";
             for (auto& a : agents)
-                list += "  " + a->getAvatar() + " " + a->getName() + "\n";
+                list += "  " + displayAvatar(a->getAvatar()) + " " + a->getName() + "\n";
             embed["kind"] = "text";
             embed["text"] = list;
         } else if (arg.rfind("add ", 0) == 0) {
