@@ -455,7 +455,7 @@ onBeforeUnmount(() => ch.close())
 }
 
 .msg-name-row {
-  font-size: 12px;
+  font-size: 20px;
   color: #6b7280;
   padding: 0 12px 2px;
   font-weight: 500;
@@ -471,13 +471,13 @@ onBeforeUnmount(() => ch.close())
 }
 
 .msg-avatar {
-  width: 30px;
-  height: 30px;
+  width: 50px;
+  height: 50px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
+  font-size: 24px;
   flex-shrink: 0;
   background: #e5e7eb;
   margin-top: 10px;
