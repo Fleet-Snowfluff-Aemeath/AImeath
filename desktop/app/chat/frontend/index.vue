@@ -11,13 +11,13 @@
         :key="i"
         :class="['msg', m.isSelf ? 'msg-self' : 'msg-other']"
       >
+        <div v-if="!m.isSelf && m.senderAvatar" class="msg-avatar avatar-other">{{ m.senderAvatar }}</div>
         <div class="msg-wrapper">
         <div v-if="m.sender" class="msg-top-row" :class="m.isSelf ? 'msg-top-self' : ''">
-          <span v-if="!m.isSelf && m.senderAvatar" class="msg-avatar">{{ m.senderAvatar }}</span>
-          <span class="msg-name">{{ m.sender }}</span>
-          <span v-if="m.isSelf && m.senderAvatar" class="msg-avatar">{{ m.senderAvatar }}</span>
+          <span class="msg-name">{{ m.senderAvatar }}{{ m.sender }}</span>
         </div>
-        <div v-if="m.type === 'embed'" class="bubble bubble-embed" :class="'bubble-'+m.kind">
+        <div class="msg-content-row" :class="m.isSelf ? 'msg-row-self' : ''">
+          <div v-if="m.type === 'embed'" class="bubble bubble-embed" :class="'bubble-'+m.kind">
           <div v-if="m.kind === 'image'" class="embed-body">
             <img :src="m.url" :alt="m.title" class="embed-img" @click="previewImg(m.url)" />
             <div v-if="m.title" class="embed-title">{{ m.title }}</div>
@@ -49,6 +49,7 @@
           <div v-html="renderMarkdown(m.text)"></div>
         </div>
         </div>
+        <div v-if="m.isSelf && m.senderAvatar" class="msg-avatar avatar-self">{{ m.senderAvatar }}</div>
       </div>
     </main>
     <footer class="chat-footer">
@@ -472,6 +473,14 @@ onBeforeUnmount(() => ch.close())
   padding: 0 8px;
 }
 
+.msg-content-row {
+  display: flex;
+}
+
+.msg-row-self {
+  justify-content: flex-end;
+}
+
 .msg-avatar {
   width: 50px;
   height: 50px;
@@ -479,13 +488,21 @@ onBeforeUnmount(() => ch.close())
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 24px;
+  font-size: 20px;
   flex-shrink: 0;
   background: #e5e7eb;
 }
 
 .msg-other .msg-avatar {
   background: #dbeafe;
+}
+
+.avatar-self {
+  order: 2;
+}
+
+.avatar-other {
+  order: 0;
 }
 
 .bubble {
