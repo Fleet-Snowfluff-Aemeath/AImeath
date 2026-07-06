@@ -22,7 +22,6 @@
 #include <fstream>
 
 #include "agent_chat_api.hpp"
-#include "agent_profile.hpp"
 #include "llm_client.hpp"
 #include "llm_utils.hpp"
 #include "config.hpp"
@@ -96,8 +95,16 @@ struct ChatApp : std::enable_shared_from_this<ChatApp>
 
     std::vector<std::shared_ptr<agent::IAgentChat>> agents;
 
+    std::string current_sender_name = "AI助手";
+    std::string current_sender_avatar = "🤖";
+
     void push_output(boost::json::value val)
     {
+        if (val.is_object() && !current_sender_name.empty()) {
+            auto& o = val.as_object();
+            if (!o.contains("sender_name")) o["sender_name"] = current_sender_name;
+            if (!o.contains("sender_avatar")) o["sender_avatar"] = current_sender_avatar;
+        }
         bool is_end = false;
         if (val.is_object()) {
             auto& o = val.as_object();
@@ -170,22 +177,21 @@ static boost::json::array handleCommand(ChatApp* app, const std::string& text)
             embed["text"] = agentList;
         } else if (arg == "available") {
             std::string profileDir = std::string(PROJ_ROOT) + "/module/agent/config";
-            auto profiles = agent::AgentProfile::loadAll(profileDir);
+            auto agents = agent::loadAgentsFromDir(profileDir);
             std::string list = "可用AI助手配置:\n";
-            for (auto& p : profiles)
-                list += "  " + p.avatar + " " + p.name + "\n";
+            for (auto& a : agents)
+                list += "  " + a->getAvatar() + " " + a->getName() + "\n";
             embed["kind"] = "text";
             embed["text"] = list;
         } else if (arg.rfind("add ", 0) == 0) {
             std::string agentName = arg.substr(4);
             std::string profileDir = std::string(PROJ_ROOT) + "/module/agent/config";
-            auto profiles = agent::AgentProfile::loadAll(profileDir);
+            auto agents = agent::loadAgentsFromDir(profileDir);
             bool found = false;
-            for (auto& p : profiles) {
-                if (p.name == agentName) {
-                    auto agentPtr = agent::AgentProfileManager::createAgent(p);
-                    if (app->io_ctx_ptr) agentPtr->setIoContext(app->io_ctx_ptr);
-                    agentPtr->setResponseCallback([app](boost::json::object msg) {
+            for (auto& a : agents) {
+                if (a->getName() == agentName) {
+                    if (app->io_ctx_ptr) a->setIoContext(app->io_ctx_ptr);
+                    a->setResponseCallback([app](boost::json::object msg) {
                         if (app->cancelled) return;
                         boost::json::object out;
                         out["type"] = "agent_msg";
@@ -196,7 +202,7 @@ static boost::json::array handleCommand(ChatApp* app, const std::string& text)
                         std::lock_guard<std::mutex> lock(app->mtx);
                         app->history.push_back(std::move(msg));
                     });
-                    app->agents.push_back(std::move(agentPtr));
+                    app->agents.push_back(std::move(a));
                     embed["kind"] = "text";
                     embed["text"] = "已添加AI助手: " + agentName;
                     found = true;

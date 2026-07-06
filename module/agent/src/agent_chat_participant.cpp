@@ -124,4 +124,18 @@ std::shared_ptr<IAgentChat> AgentProfileManager::createAgent(const AgentProfile&
     return std::make_shared<AgentChatParticipant>(profile);
 }
 
+std::shared_ptr<IAgentChat> createAgentFromProfile(const std::string& yamlPath) {
+    auto profile = AgentProfile::fromYaml(yamlPath);
+    return AgentProfileManager::createAgent(profile);
+}
+
+std::vector<std::shared_ptr<IAgentChat>> loadAgentsFromDir(const std::string& dir) {
+    std::vector<std::shared_ptr<IAgentChat>> agents;
+    auto profiles = AgentProfile::loadAll(dir);
+    for (auto& p : profiles) {
+        agents.push_back(AgentProfileManager::createAgent(p));
+    }
+    return agents;
+}
+
 } // namespace agent

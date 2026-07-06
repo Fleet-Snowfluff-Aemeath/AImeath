@@ -54,3 +54,41 @@ TEST(AgentProfileTest, LoadAllFromDir) {
     auto profiles = agent::AgentProfile::loadAll("/tmp");
     EXPECT_GE(profiles.size(), 0u);
 }
+
+TEST(AgentProfileTest, LoadWithTools) {
+    writeTestYaml(R"(
+name: "工具代理"
+tools:
+  - open_app
+  - terminal_exec
+  - chat_send
+)");
+    auto profile = agent::AgentProfile::fromYaml(testYamlPath());
+    EXPECT_EQ(profile.name, "工具代理");
+    EXPECT_TRUE(profile.enable_tools);
+    ASSERT_EQ(profile.tools.size(), 3u);
+    EXPECT_EQ(profile.tools[0], "open_app");
+    EXPECT_EQ(profile.tools[1], "terminal_exec");
+    EXPECT_EQ(profile.tools[2], "chat_send");
+    cleanup();
+}
+
+TEST(AgentProfileTest, MalformedYamlDoesNotCrash) {
+    writeTestYaml(R"(name: [invalid: yaml: :::");
+    EXPECT_THROW(agent::AgentProfile::fromYaml(testYamlPath()), YAML::Exception);
+    cleanup();
+}
+
+TEST(AgentProfileTest, NonExistentFileDoesNotCrash) {
+    bool thrown = false;
+    try { agent::AgentProfile::fromYaml("/tmp/__nonexistent_yaml__"); }
+    catch (...) { thrown = true; }
+    EXPECT_TRUE(thrown);
+}
+
+TEST(AgentProfileTest, LoadAllIgnoresBadFiles) {
+    writeTestYaml(R"(name: "good")");
+    auto profiles = agent::AgentProfile::loadAll("/tmp");
+    EXPECT_GE(profiles.size(), 0u);
+    cleanup();
+}

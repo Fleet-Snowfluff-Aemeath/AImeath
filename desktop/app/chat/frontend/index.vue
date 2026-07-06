@@ -202,7 +202,7 @@ ch.onMessage((data) => {
     }
     scrollBottom()
   } else if (data.text !== undefined) {
-    messages.value.push({ text: data.text, isSelf: false })
+    messages.value.push({ text: data.text, isSelf: false, sender, senderAvatar })
     scrollBottom()
   }
 })

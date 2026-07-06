@@ -32,4 +32,7 @@ public:
     virtual void stop() = 0;
 };
 
+std::shared_ptr<IAgentChat> createAgentFromProfile(const std::string& yamlPath);
+std::vector<std::shared_ptr<IAgentChat>> loadAgentsFromDir(const std::string& dir);
+
 } // namespace agent
