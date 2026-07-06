@@ -98,7 +98,7 @@ struct ChatApp : std::enable_shared_from_this<ChatApp>
     std::vector<std::shared_ptr<agent::IAgentChat>> agents;
 
     std::string current_sender_name = "AI助手";
-    std::string current_sender_avatar = "🤖";
+    std::string current_sender_avatar = "/res/C220748556D18ADBC61177B1A5A8151D.png";
     std::string user_display_name;
 
     void push_output(boost::json::value val)
@@ -762,7 +762,7 @@ static void handleUserMessageAsync(ChatApp* app, const std::string& text, const 
                 boost::json::object am;
                 am["role"] = "assistant";
                 am["sender_name"] = "AI助手";
-                am["sender_avatar"] = "🤖";
+                am["sender_avatar"] = app->current_sender_avatar;
                 if (!response.empty()) am["content"] = response;
                 if (!reasoning.empty()) am["reasoning_content"] = reasoning;
                 if (!response.empty() || !reasoning.empty())
