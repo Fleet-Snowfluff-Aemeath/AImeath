@@ -2,6 +2,7 @@
   <div class="chat-page">
     <header class="chat-header">
       <h1>聊天</h1>
+      <span v-if="USER_NAME !== '用户'" class="chat-user">{{ USER_AVATAR }} {{ USER_NAME }}</span>
       <span class="chat-status" :class="statusClass">{{ statusText }}</span>
     </header>
     <main class="chat-main" ref="msgBox">
@@ -80,6 +81,9 @@ mermaid.initialize({
 const WS_URL = getWsUrl('/chat')
 const WID = new URLSearchParams(location.search).get('wid') || ''
 const DNAME = decodeURIComponent(new URLSearchParams(location.search).get('name') || '')
+const DAVATAR = decodeURIComponent(new URLSearchParams(location.search).get('avatar') || '')
+const USER_NAME = DNAME || '用户'
+const USER_AVATAR = DAVATAR || '👤'
 
 const input = ref('')
 const messages = ref([])
@@ -286,7 +290,7 @@ function send() {
   if (WID) p.window_id = WID
   if (DNAME) p.display_name = DNAME
   ch.send(p)
-  messages.value.push({ text, isSelf: true, sender: '用户', senderAvatar: '' })
+  messages.value.push({ text, isSelf: true, sender: USER_NAME, senderAvatar: USER_AVATAR })
   input.value = ''
   scrollBottom()
 }
@@ -332,8 +336,13 @@ onBeforeUnmount(() => ch.close())
 .chat-header h1 {
   font-size: 18px;
   font-weight: 600;
-  flex: 1;
   margin: 0;
+}
+
+.chat-user {
+  font-size: 13px;
+  color: #6b7280;
+  flex-shrink: 0;
 }
 
 .chat-status {
