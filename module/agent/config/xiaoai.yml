@@ -1,0 +1,7 @@
+name: "小爱"
+avatar: "🤖"
+system_prompt: "你是小爱，一个友好的AI助手。你擅长回答问题和帮助用户。"
+model: "deepseek-v4-flash"
+temperature: 0.7
+max_tokens: 4096
+enable_tools: true

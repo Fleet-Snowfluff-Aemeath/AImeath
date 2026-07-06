@@ -14,7 +14,7 @@
         <div v-if="showAgents" class="agent-panel">
           <div class="agent-panel-header">房间Agent ({{ agents.length }})</div>
           <div v-for="(a, i) in agents" :key="i" class="agent-item">
-            <span class="agent-item-avatar">{{ a.avatar }}</span>
+            <span class="agent-item-avatar">{{ fixAvatar(a.avatar) }}</span>
             <span class="agent-item-name">{{ a.name }}</span>
             <button class="agent-item-rm" @click="removeAgent(a.name)">×</button>
           </div>
@@ -81,13 +81,13 @@
             <span class="mention-name">{{ a.name }}</span>
           </div>
         </div>
-        <input
+        <textarea
           v-model="input"
           class="chat-input"
-          placeholder="输入消息... 群聊中@agent名可定向发送"
+          placeholder="输入消息... @agent名可定向发送"
           @keydown="onInputKeydown"
           :disabled="!connected"
-        />
+        ></textarea>
       </div>
       <button class="chat-send" @click="send" :disabled="!connected || !input.trim()">发送</button>
       <button v-if="isStreaming" class="chat-stop" @click="stopStream" title="停止生成">
@@ -367,10 +367,17 @@ function addAgent() {
   if (!name) return
   ch.send({ text: `/agent add ${name}` })
   newAgentName.value = ''
+  showAgents.value = false
+  setTimeout(refreshAgents, 800)
 }
 
 function removeAgent(name) {
   ch.send({ text: `/agent remove ${name}` })
+  setTimeout(refreshAgents, 800)
+}
+
+function fixAvatar(av) {
+  return /^(https?:|\/)/i.test(av) ? '🤖' : av
 }
 
 function refreshAgents() {
@@ -378,15 +385,18 @@ function refreshAgents() {
 }
 
 function onInputKeydown(e) {
-  if (e.key === 'Enter' && !showMentions.value) { send(); return }
-  if (e.key === '@') { showMentions.value = true; mentionFilter.value = '' }
-  else if (showMentions.value && e.key === 'Escape') { showMentions.value = false }
-  else if (showMentions.value && e.key === 'Backspace') {
-    mentionFilter.value = mentionFilter.value.slice(0, -1)
-    if (!mentionFilter.value) showMentions.value = false
-  }
-  else if (showMentions.value && e.key.length === 1) {
-    mentionFilter.value += e.key
+  if (e.key === 'Enter' && !e.shiftKey && !showMentions.value) { e.preventDefault(); send(); return }
+  if (e.key === '@') { showMentions.value = true; mentionFilter.value = ''; return }
+  if (showMentions.value) {
+    if (e.key === 'Escape') { showMentions.value = false; return }
+    if (e.key === 'Enter') { e.preventDefault(); return }
+    if (e.key === ' ') { showMentions.value = false; return }
+    if (e.key === 'Backspace') {
+      mentionFilter.value = mentionFilter.value.slice(0, -1)
+      if (!mentionFilter.value) showMentions.value = false
+      return
+    }
+    if (e.key.length === 1) { mentionFilter.value += e.key; return }
   }
 }
 
@@ -783,6 +793,11 @@ onBeforeUnmount(() => ch.close())
   font-size: 15px;
   outline: none;
   transition: border-color 0.2s;
+  resize: vertical;
+  font-family: inherit;
+  line-height: 1.5;
+  min-height: 40px;
+  max-height: 200px;
 }
 
 .chat-input:focus {
