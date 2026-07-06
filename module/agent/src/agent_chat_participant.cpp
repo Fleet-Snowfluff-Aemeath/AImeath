@@ -28,7 +28,7 @@ namespace agent {
     } while(0)
 
 void AgentChatParticipant::doLlmRound(const boost::json::array& msgs, int round) {
-    if (cancelled_ || round > 5) {
+    if (cancelled_) {
         boost::json::object end;
         end["type"] = "stream_end";
         pushStream(std::move(end));
