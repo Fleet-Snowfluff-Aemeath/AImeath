@@ -126,6 +126,7 @@ const showMentions = ref(false)
 const mentionFilter = ref('')
 const connected = ref(false)
 const streamingIdx = ref(-1)
+const streamIdxBySender = {}
 let pollTimer = null
 let deltaBuffer = ''
 let reasoningBuffer = ''
@@ -133,7 +134,7 @@ let rafPending = false
 
 const statusText = computed(() => connected.value ? '已连接' : '未连接')
 const statusClass = computed(() => connected.value ? 'status-ok' : 'status-err')
-const isStreaming = computed(() => streamingIdx.value >= 0)
+const isStreaming = computed(() => Object.keys(streamIdxBySender).length > 0)
 const chatType = computed(() => isGroupChat.value ? 'group' : 'private')
 const chatTypeLabel = computed(() => isGroupChat.value ? '群聊' : '私聊')
 const isGroupChat = ref(true)
@@ -161,29 +162,27 @@ function clearStream() {
   deltaBuffer = ''
   reasoningBuffer = ''
   rafPending = false
+  Object.keys(streamIdxBySender).forEach(k => delete streamIdxBySender[k])
 }
 
-function flushStream() {
-  rafPending = false
-  if (streamingIdx.value < 0) return
-  let changed = false
+function flushStream(sender) {
+  const idx = streamIdxBySender[sender]
+  if (idx == null) return
   if (deltaBuffer) {
-    messages.value[streamingIdx.value].text += deltaBuffer
+    messages.value[idx].text += deltaBuffer
     deltaBuffer = ''
-    changed = true
   }
   if (reasoningBuffer) {
-    messages.value[streamingIdx.value].reasoning += reasoningBuffer
+    messages.value[idx].reasoning += reasoningBuffer
     reasoningBuffer = ''
-    changed = true
   }
-  if (changed) scrollBottom()
+  scrollBottom()
 }
 
-function scheduleFlush() {
+function scheduleFlush(sender) {
   if (!rafPending) {
     rafPending = true
-    requestAnimationFrame(flushStream)
+    requestAnimationFrame(() => flushStream(sender))
   }
 }
 
@@ -203,21 +202,28 @@ ch.onMessage((data) => {
     scrollBottom()
   } else if (data.type === 'stream_start') {
     messages.value.push({ text: '', reasoning: '', isSelf: false, sender, senderAvatar })
+    streamIdxBySender[sender || ''] = messages.value.length - 1
     streamingIdx.value = messages.value.length - 1
     scrollBottom()
     startPoll()
   } else if (data.type === 'reasoning') {
-    if (streamingIdx.value >= 0) {
+    const idx = streamIdxBySender[sender || '']
+    if (idx != null) {
       reasoningBuffer += data.text
-      scheduleFlush()
+      scheduleFlush(sender || '')
     }
   } else if (data.type === 'delta') {
-    if (streamingIdx.value >= 0) {
+    const idx = streamIdxBySender[sender || '']
+    if (idx != null) {
       deltaBuffer += data.text
-      scheduleFlush()
+      scheduleFlush(sender || '')
     }
   } else if (data.type === 'stream_end') {
-    if (deltaBuffer || reasoningBuffer) flushStream()
+    const idx = streamIdxBySender[sender || '']
+    if (idx != null) {
+      flushStream(sender || '')
+      delete streamIdxBySender[sender || '']
+    }
     clearStream()
     stopPoll()
     if (data.msg && streamingIdx.value >= 0) {
