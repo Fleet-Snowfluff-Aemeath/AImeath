@@ -12,10 +12,12 @@
         :class="['msg', m.isSelf ? 'msg-self' : 'msg-other']"
       >
         <div class="msg-wrapper">
-        <div v-if="m.sender" class="msg-name-row">{{ m.sender }}</div>
-        <div class="msg-content-row" :class="m.isSelf ? 'msg-row-self' : 'msg-row-other'">
-          <div v-if="!m.isSelf && m.senderAvatar" class="msg-avatar">{{ m.senderAvatar }}</div>
-          <div v-if="m.type === 'embed'" class="bubble bubble-embed" :class="'bubble-'+m.kind">
+        <div v-if="m.sender" class="msg-top-row" :class="m.isSelf ? 'msg-top-self' : ''">
+          <span v-if="!m.isSelf && m.senderAvatar" class="msg-avatar">{{ m.senderAvatar }}</span>
+          <span class="msg-name">{{ m.sender }}</span>
+          <span v-if="m.isSelf && m.senderAvatar" class="msg-avatar">{{ m.senderAvatar }}</span>
+        </div>
+        <div v-if="m.type === 'embed'" class="bubble bubble-embed" :class="'bubble-'+m.kind">
           <div v-if="m.kind === 'image'" class="embed-body">
             <img :src="m.url" :alt="m.title" class="embed-img" @click="previewImg(m.url)" />
             <div v-if="m.title" class="embed-title">{{ m.title }}</div>
@@ -45,8 +47,6 @@
             <div class="reasoning-content">{{ m.reasoning }}</div>
           </details>
           <div v-html="renderMarkdown(m.text)"></div>
-        </div>
-          <div v-if="m.isSelf && m.senderAvatar" class="msg-avatar">{{ m.senderAvatar }}</div>
         </div>
         </div>
       </div>
@@ -454,20 +454,22 @@ onBeforeUnmount(() => ch.close())
   align-items: flex-start;
 }
 
-.msg-name-row {
+.msg-top-row {
+  display: flex;
+  align-items: flex-start;
+  padding: 0 0 2px;
+}
+
+.msg-top-self {
+  flex-direction: row-reverse;
+}
+
+.msg-name {
   font-size: 20px;
   color: #6b7280;
-  padding: 0 12px 2px;
   font-weight: 500;
-}
-
-.msg-content-row {
-  display: flex;
-  gap: 6px;
-}
-
-.msg-row-self {
-  flex-direction: row-reverse;
+  line-height: 50px;
+  padding: 0 8px;
 }
 
 .msg-avatar {
@@ -480,7 +482,6 @@ onBeforeUnmount(() => ch.close())
   font-size: 24px;
   flex-shrink: 0;
   background: #e5e7eb;
-  margin-top: 10px;
 }
 
 .msg-other .msg-avatar {
