@@ -203,14 +203,12 @@ static boost::json::array handleCommand(ChatApp* app, const std::string& text)
             for (auto& a : agents) {
                 if (a->getName() == agentName) {
                     if (app->io_ctx_ptr) a->setIoContext(app->io_ctx_ptr);
+                    a->setStreamCallback([app](boost::json::object ev) {
+                        if (app->cancelled) return;
+                        app->push_output(std::move(ev));
+                    });
                     a->setResponseCallback([app](boost::json::object msg) {
                         if (app->cancelled) return;
-                        boost::json::object out;
-                        out["type"] = "agent_msg";
-                        out["sender_name"] = msg["sender_name"];
-                        out["sender_avatar"] = msg["sender_avatar"];
-                        out["content"] = msg["content"];
-                        app->push_output(std::move(out));
                         std::lock_guard<std::mutex> lock(app->mtx);
                         app->history.push_back(std::move(msg));
                     });
@@ -719,6 +717,15 @@ static void handleUserMessageAsync(ChatApp* app, const std::string& text, const 
     app->push_output(std::move(start));
 }
 
+static std::string buildSystemMsg() {
+    static std::string cached;
+    if (cached.empty()) {
+        YAML::Node config = YAML::LoadFile("module/agent/config/agent_prompt.yml");
+        cached = config["system_prompt"].as<std::string>();
+    }
+    return cached;
+}
+
 static boost::json::array& chatToolDefs() {
     static boost::json::array tools;
     if (tools.empty())
@@ -857,14 +864,12 @@ void* app_create(const char* config_json)
         ptr->current_sender_name = mainAi->getName();
         auto mainAiId = agent::AgentManager::instance().allocId();
         agent::AgentManager::instance().joinChat(mainAiId, ptr->chatId, agent::ChatType::GROUP);
+        mainAi->setStreamCallback([raw = ptr.get()](boost::json::object ev) {
+            if (raw->cancelled) return;
+            raw->push_output(std::move(ev));
+        });
         mainAi->setResponseCallback([raw = ptr.get()](boost::json::object msg) {
             if (raw->cancelled) return;
-            boost::json::object out;
-            out["type"] = "agent_msg";
-            out["sender_name"] = msg["sender_name"];
-            out["sender_avatar"] = msg["sender_avatar"];
-            out["content"] = msg["content"];
-            raw->push_output(std::move(out));
             std::lock_guard<std::mutex> lock(raw->mtx);
             raw->history.push_back(std::move(msg));
         });

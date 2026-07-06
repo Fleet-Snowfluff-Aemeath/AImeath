@@ -32,6 +32,11 @@ public:
         response_cb_ = std::move(cb);
     }
 
+    void setStreamCallback(StreamCallback cb) override {
+        std::lock_guard<std::mutex> lock(mtx_);
+        stream_cb_ = std::move(cb);
+    }
+
     void setIoContext(void* io_ctx) override {
         io_ctx_ptr_ = io_ctx;
     }
@@ -41,6 +46,7 @@ public:
         {
             std::lock_guard<std::mutex> lock(mtx_);
             response_cb_ = nullptr;
+            stream_cb_ = nullptr;
         }
     }
 
@@ -49,6 +55,7 @@ private:
     std::mutex mtx_;
     std::atomic<bool> cancelled_{false};
     ResponseCallback response_cb_;
+    StreamCallback stream_cb_;
     void* io_ctx_ptr_ = nullptr;
 };
 

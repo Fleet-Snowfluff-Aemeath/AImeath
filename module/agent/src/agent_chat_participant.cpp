@@ -50,7 +50,7 @@ void AgentChatParticipant::onUserMessage(
         msgs.push_back(std::move(copy));
     }
 
-    std::string body = llm::build_chat_body(msgs, profile_.model, false, true,
+    std::string body = llm::build_chat_body(msgs, profile_.model, true, true,
         profile_.temperature, profile_.max_tokens);
 
     if (profile_.enable_tools) {
@@ -77,14 +77,41 @@ void AgentChatParticipant::onUserMessage(
         if (cb) cb(std::move(msg));
     };
 
+    auto pushStream = [this](boost::json::object ev) {
+        StreamCallback cb;
+        {
+            std::lock_guard<std::mutex> lock(mtx_);
+            cb = stream_cb_;
+        }
+        if (cb) cb(std::move(ev));
+    };
+
+    auto pushResponse = [this](boost::json::object msg) {
+        ResponseCallback cb;
+        {
+            std::lock_guard<std::mutex> lock(mtx_);
+            cb = response_cb_;
+        }
+        if (cb) cb(std::move(msg));
+    };
+
     if (!io) {
-        std::thread([self, body = std::move(body), apiKey = std::move(apiKey), cancelled_ptr, makeCallback]() {
+        pushStream(boost::json::object{{"type", "stream_start"}});
+        std::thread([self, body = std::move(body), apiKey = std::move(apiKey), cancelled_ptr, pushStream, pushResponse]() {
             boost::asio::io_context io_local;
             auto client = std::make_shared<LlmClient>(io_local);
             std::string fullResponse;
 
             client->start("api.deepseek.com", "443", body, "Bearer " + apiKey,
-                [](LlmEvent) {},
+                [cancelled_ptr, pushStream](LlmEvent ev) {
+                    if (cancelled_ptr->load()) return;
+                    if (ev.type == "delta" || ev.type == "reasoning") {
+                        boost::json::object obj;
+                        obj["type"] = ev.type;
+                        obj["text"] = ev.text;
+                        pushStream(std::move(obj));
+                    }
+                },
                 [cancelled_ptr, &fullResponse](std::string response, std::string, int, int) {
                     if (cancelled_ptr->load()) return;
                     fullResponse = std::move(response);
@@ -92,36 +119,43 @@ void AgentChatParticipant::onUserMessage(
 
             io_local.run();
 
+            pushStream(boost::json::object{{"type", "stream_end"}});
             if (!cancelled_ptr->load() && !fullResponse.empty()) {
                 boost::json::object am;
                 am["role"] = "assistant";
                 am["sender_name"] = self->profile_.name;
                 am["sender_avatar"] = self->profile_.avatar;
                 am["content"] = fullResponse;
-                makeCallback(std::move(am));
+                pushResponse(std::move(am));
             }
         }).detach();
         return;
     }
 
+    pushStream(boost::json::object{{"type", "stream_start"}});
+
     auto stream = std::make_shared<LlmClient>(*io);
-    auto toolCalls = std::make_shared<std::vector<LlmToolCall>>();
 
     stream->start("api.deepseek.com", "443", body, "Bearer " + apiKey,
-        [cancelled_ptr, toolCalls](LlmEvent ev) {
+        [cancelled_ptr, pushStream](LlmEvent ev) {
             if (cancelled_ptr->load()) return;
-            if (!ev.tool_calls.empty())
-                toolCalls->insert(toolCalls->end(), ev.tool_calls.begin(), ev.tool_calls.end());
+            if (ev.type == "delta" || ev.type == "reasoning") {
+                boost::json::object obj;
+                obj["type"] = ev.type;
+                obj["text"] = ev.text;
+                pushStream(std::move(obj));
+            }
         },
-        [cancelled_ptr, makeCallback, self](std::string response, std::string, int, int) {
+        [cancelled_ptr, pushStream, pushResponse, self](std::string response, std::string, int, int) {
             if (cancelled_ptr->load()) return;
+            pushStream(boost::json::object{{"type", "stream_end"}});
             if (!response.empty()) {
                 boost::json::object am;
                 am["role"] = "assistant";
                 am["sender_name"] = self->profile_.name;
                 am["sender_avatar"] = self->profile_.avatar;
                 am["content"] = response;
-                makeCallback(std::move(am));
+                pushResponse(std::move(am));
             }
         });
 }

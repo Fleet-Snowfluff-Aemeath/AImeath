@@ -27,6 +27,9 @@ public:
     using ResponseCallback = std::function<void(boost::json::object response_msg)>;
     virtual void setResponseCallback(ResponseCallback cb) = 0;
 
+    using StreamCallback = std::function<void(boost::json::object stream_event)>;
+    virtual void setStreamCallback(StreamCallback cb) = 0;
+
     virtual void setIoContext(void* io_ctx) = 0;
 
     virtual void stop() = 0;
