@@ -423,7 +423,7 @@ static std::string executeTool(ChatApp* app, const std::string& name, const std:
             return R"({"success":true})";
         }
         if (name == "file_list") {
-            std::string path = a.contains("path") ? a["path"].as_string().c_str() : "/";
+            std::string path = a.contains("path") ? a["path"].as_string().c_str() : Config::instance().fileRoot();
             boost::json::array entries;
             for (auto& entry : std::filesystem::directory_iterator(path)) {
                 boost::json::object e;
@@ -645,7 +645,7 @@ static void processToolCalls(ChatApp* app,
         } else if (tc.function_name == "file_list") {
             try {
                 auto args = boost::json::parse(tc.function_arguments);
-                std::string path = "/";
+                std::string path = Config::instance().fileRoot();
                 if (args.as_object().contains("path"))
                     path = args.as_object()["path"].as_string().c_str();
                 namespace fs = std::filesystem;
@@ -830,6 +830,7 @@ static void handleUserMessageAsync(ChatApp* app, const std::string& text, const 
 
     if (!app->agents.empty()) {
         auto idx = std::make_shared<int>(0);
+        auto round = std::make_shared<int>(0);
         auto oldCallbacks = std::make_shared<std::vector<agent::IAgentChat::ResponseCallback>>();
         for (auto& ag : app->agents) oldCallbacks->push_back(nullptr);
 
@@ -837,16 +838,23 @@ static void handleUserMessageAsync(ChatApp* app, const std::string& text, const 
         std::string msgSender = sender_name;
         std::string msgTarget = targetAgent;
         std::string msgActual = actualText;
+        bool autoLoop = targetAgent.empty() && app->agents.size() > 1;
 
-        std::function<void()> processNext;
-        processNext = [app, idx, msgText, msgSender, msgTarget, msgActual, oldCallbacks, &processNext]() {
+        auto processNext = std::make_shared<std::function<void()>>();
+        *processNext = [app, idx, round, msgText, msgSender, msgTarget, msgActual, oldCallbacks, processNext, autoLoop]() {
             if (app->cancelled) return;
             int i = (*idx)++;
+
             if (i >= static_cast<int>(app->agents.size())) {
-                for (size_t j = 0; j < app->agents.size(); ++j)
-                    if ((*oldCallbacks)[j])
-                        app->agents[j]->setResponseCallback(std::move((*oldCallbacks)[j]));
-                return;
+                if (autoLoop && (*round)++ < 10) {
+                    *idx = 0;
+                    i = (*idx)++;
+                } else {
+                    for (size_t j = 0; j < app->agents.size(); ++j)
+                        if ((*oldCallbacks)[j])
+                            app->agents[j]->setResponseCallback(std::move((*oldCallbacks)[j]));
+                    return;
+                }
             }
 
             std::vector<boost::json::object> h;
@@ -856,22 +864,26 @@ static void handleUserMessageAsync(ChatApp* app, const std::string& text, const 
             }
 
             if (!msgTarget.empty()) {
-                if (app->agents[i]->getName() != msgTarget) { processNext(); return; }
+                if (app->agents[i]->getName() != msgTarget) { (*processNext)(); return; }
                 app->agents[i]->onUserMessage(msgActual, msgSender, h);
             } else {
-                app->agents[i]->onUserMessage(msgText, msgSender, h);
+                std::string prompt = msgText;
+                if (autoLoop && (*round) > 0) {
+                    prompt = "轮到你了，请继续对话";
+                }
+                app->agents[i]->onUserMessage(prompt, msgSender, h);
             }
 
-            (*oldCallbacks)[i] = [app, i, processNext](boost::json::object msg) {
+            (*oldCallbacks)[i] = [app, processNext](boost::json::object msg) {
                 if (!app->cancelled) {
                     std::lock_guard<std::mutex> lock(app->mtx);
                     app->history.push_back(std::move(msg));
                 }
-                processNext();
+                (*processNext)();
             };
             app->agents[i]->setResponseCallback((*oldCallbacks)[i]);
         };
-        processNext();
+        (*processNext)();
     }
 
 }

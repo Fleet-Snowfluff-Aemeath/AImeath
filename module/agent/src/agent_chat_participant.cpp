@@ -29,11 +29,12 @@ namespace agent {
 
 void AgentChatParticipant::doLlmRound(const boost::json::array& msgs, int round) {
     if (cancelled_) {
-        boost::json::object end;
-        end["type"] = "stream_end";
-        pushStream(std::move(end));
+        pushStream(boost::json::object{{"type", "stream_end"}});
         return;
     }
+
+    if (round >= 1)
+        pushStream(boost::json::object{{"type", "stream_start"}});
 
     std::string body = llm::build_chat_body(msgs, profile_.model, true, true,
         profile_.temperature, profile_.max_tokens);
@@ -107,6 +108,7 @@ void AgentChatParticipant::doLlmRound(const boost::json::array& msgs, int round)
                         tr["content"] = result;
                         newMsgs.push_back(std::move(tr));
                     }
+                    self->pushStream(boost::json::object{{"type", "stream_end"}});
                     self->doLlmRound(newMsgs, round + 1);
                 } else {
                     self->pushStream(boost::json::object{{"type", "stream_end"}});
@@ -169,7 +171,6 @@ void AgentChatParticipant::onUserMessage(
         msgs.push_back(std::move(copy));
     }
 
-    pushStream(boost::json::object{{"type", "stream_start"}});
     doLlmRound(msgs, 1);
 }
 
