@@ -681,112 +681,18 @@ static void handleUserMessageAsync(ChatApp* app, const std::string& text, const 
         app->history.push_back(std::move(user_msg));
     }
 
-    std::vector<boost::json::object> history_copy;
-    {
-        std::lock_guard<std::mutex> lock(app->mtx);
-        history_copy = app->history;
-    }
-
-    boost::json::array msgs;
-    for (const auto& m : history_copy) msgs.push_back(m);
-
-    // 注入固定的系统消息：定义 agent 身份和关键规则
-    {
-        boost::json::object sys;
-        sys["role"] = "system";
-        sys["content"] =
-            std::string("你是一个AI智能助手。你正在一个聊天会话中。\n") +
-            "关键规则：\n" +
-            "- 你在当前聊天窗口中。使用 list_active_windows 查看所有打开的窗口。\n" +
-            "- chat_send 工具：不指定 instance 时回复当前用户；指定 instance 时可向其他聊天窗口发送消息（如 chat_send(instance=0, text=\"你好\")）。\n" +
-            "- get_app_state 对聊天应用无效。你只能通过对话历史看到当前聊天的消息。\n" +
-            "- 用户要求执行 shell 命令时，使用 terminal_exec，不要打开终端应用。\n" +
-            "- 用户要求浏览/查看文件时，使用 file_list/file_read，不要打开文件管理器。\n" +
-            "- control_app 和 get_app_state 仅对游戏应用有效（snake, gomoku, pacman, go）。\n" +
-            "可用工具：open_app、control_app（仅游戏）、close_app、get_app_state（仅游戏）、chat_send、file_list、file_read、file_write、file_mkdir、file_remove、terminal_exec、terminal_stdin、list_active_windows。\n";
-        msgs.insert(msgs.begin(), std::move(sys));
-    }
-
-    // 注入已打开 app 的状态到 LLM 上下文
-    auto& registry = Config::instance().sessionRegistry();
-    std::string stateSummary = "当前已打开的全部应用：\n";
-    bool anyOpen = false;
-
-    std::set<std::pair<std::string,int>> injected;
-    auto allSessions = registry.listSessions();
-
-    for (auto it = app->instances.begin(); it != app->instances.end(); ) {
-        auto sess = registry.findSession(it->first, 0);
-        if (!sess) { it = app->instances.erase(it); } else { ++it; }
-    }
-
-    for (auto& [name, inst] : app->instances) {
-        int idx = 0;
-        while (true) {
-            auto sess = registry.findSession(name, idx);
-            if (!sess) break;
-            std::string s = (name == "chat")
-                ? "(message content not readable via tools)"
-                : sess->call_app_process("{\"action\":\"get_state\"}");
-            stateSummary += "- " + std::string(displayName(name)) + "-" + std::to_string(idx + 1) + ": " + s + "\n";
-            injected.insert({name, idx});
-            anyOpen = true;
-            ++idx;
+    std::string targetAgent;
+    std::string actualText = text;
+    if (!text.empty() && text[0] == '@') {
+        size_t sp = text.find(' ');
+        if (sp != std::string::npos) {
+            targetAgent = text.substr(1, sp - 1);
+            actualText = text.substr(sp + 1);
+            size_t first = actualText.find_first_not_of(" \t");
+            if (first != std::string::npos) actualText = actualText.substr(first);
+            else actualText.clear();
         }
     }
-
-    for (auto& kv : allSessions) {
-        auto& name = kv.first;
-        int idx = kv.second;
-        if (injected.count({name, idx})) continue;
-        auto sess = registry.findSession(name, idx);
-        if (!sess) continue;
-        std::string s = (name == "chat")
-            ? "(message content not readable via tools)"
-            : sess->call_app_process("{\"action\":\"get_state\"}");
-        stateSummary += "- " + std::string(displayName(name)) + "-" + std::to_string(idx + 1) + ": " + s + "\n";
-        anyOpen = true;
-    }
-
-    if (anyOpen) {
-        boost::json::object stateMsg;
-        stateMsg["role"] = "system";
-        stateMsg["content"] = stateSummary;
-        msgs.push_back(std::move(stateMsg));
-    }
-
-    std::string body = llm::build_chat_body(msgs);
-    doLlmCall(app, body, true, [app](std::string response, std::string reasoning, std::vector<LlmToolCall> toolCalls) {
-        if (app->cancelled) return;
-
-        if (!toolCalls.empty()) {
-            auto merged = llm::merge_tool_calls(toolCalls);
-            std::vector<LlmToolCall> mergedList;
-            for (auto& kv : merged)
-                mergedList.push_back(kv.second);
-            processToolCalls(app, mergedList, response, reasoning);
-        } else {
-            boost::json::object am;
-            am["role"] = "assistant";
-            am["sender_name"] = "AI助手";
-            am["sender_avatar"] = app->current_sender_avatar;
-            if (!response.empty()) am["content"] = response;
-            if (!reasoning.empty()) am["reasoning_content"] = reasoning;
-            if (!response.empty() || !reasoning.empty()) {
-                if (!app->agents.empty()) {
-                    app->agents[0]->setResponseCallback([app](boost::json::object msg) {
-                        app->push_output(msg);
-                        std::lock_guard<std::mutex> lock(app->mtx);
-                        app->history.push_back(std::move(msg));
-                    });
-                } else {
-                    std::lock_guard<std::mutex> lock(app->mtx);
-                    app->history.push_back(boost::json::object(am));
-                }
-                app->push_output(std::move(am));
-            }
-        }
-    });
 
     if (!app->agents.empty()) {
         std::vector<boost::json::object> histCopy;
@@ -794,8 +700,17 @@ static void handleUserMessageAsync(ChatApp* app, const std::string& text, const 
             std::lock_guard<std::mutex> lock(app->mtx);
             histCopy = app->history;
         }
-        for (auto& agent : app->agents) {
-            agent->onUserMessage(text, sender_name, histCopy);
+        if (!targetAgent.empty()) {
+            for (auto& agent : app->agents) {
+                if (agent->getName() == targetAgent) {
+                    agent->onUserMessage(actualText, sender_name, histCopy);
+                    break;
+                }
+            }
+        } else {
+            for (auto& agent : app->agents) {
+                agent->onUserMessage(text, sender_name, histCopy);
+            }
         }
     }
 
