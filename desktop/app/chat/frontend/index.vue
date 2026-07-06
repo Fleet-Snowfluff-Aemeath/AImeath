@@ -11,16 +11,11 @@
         :key="i"
         :class="['msg', m.isSelf ? 'msg-self' : 'msg-other']"
       >
-        <div class="msg-inner">
-        <div v-if="m.isSelf && m.sender" class="msg-sender msg-sender-self">
-          <span class="sender-name">{{ m.sender }}</span>
-          <span v-if="m.senderAvatar" class="sender-avatar">{{ m.senderAvatar }}</span>
-        </div>
-        <div v-else-if="!m.isSelf && m.sender" class="msg-sender msg-sender-other">
-          <span v-if="m.senderAvatar" class="sender-avatar">{{ m.senderAvatar }}</span>
-          <span class="sender-name">{{ m.sender }}</span>
-        </div>
-        <div v-if="m.type === 'embed'" class="bubble bubble-embed" :class="'bubble-'+m.kind">
+        <div class="msg-wrapper">
+        <div v-if="m.sender" class="msg-name-row">{{ m.sender }}</div>
+        <div class="msg-content-row" :class="m.isSelf ? 'msg-row-self' : 'msg-row-other'">
+          <div v-if="!m.isSelf && m.senderAvatar" class="msg-avatar">{{ m.senderAvatar }}</div>
+          <div v-if="m.type === 'embed'" class="bubble bubble-embed" :class="'bubble-'+m.kind">
           <div v-if="m.kind === 'image'" class="embed-body">
             <img :src="m.url" :alt="m.title" class="embed-img" @click="previewImg(m.url)" />
             <div v-if="m.title" class="embed-title">{{ m.title }}</div>
@@ -50,6 +45,8 @@
             <div class="reasoning-content">{{ m.reasoning }}</div>
           </details>
           <div v-html="renderMarkdown(m.text)"></div>
+        </div>
+          <div v-if="m.isSelf && m.senderAvatar" class="msg-avatar">{{ m.senderAvatar }}</div>
         </div>
         </div>
       </div>
@@ -387,6 +384,20 @@ onBeforeUnmount(() => ch.close())
 
 .msg-other {
   justify-content: flex-start;
+}
+
+.msg-inner {
+  display: flex;
+  flex-direction: column;
+  max-width: 70%;
+}
+
+.msg-self .msg-inner {
+  align-items: flex-end;
+}
+
+.msg-other .msg-inner {
+  align-items: flex-start;
 }
 
 .msg-inner {
