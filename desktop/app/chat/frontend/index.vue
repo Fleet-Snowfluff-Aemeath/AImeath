@@ -377,6 +377,7 @@ onBeforeUnmount(() => ch.close())
 
 .msg {
   display: flex;
+  align-items: flex-start;
 }
 
 .msg-self {
