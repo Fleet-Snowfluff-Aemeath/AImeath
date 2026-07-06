@@ -22,7 +22,7 @@
 #include <fstream>
 
 #include "agent_chat_api.hpp"
-#include "agent_profile.hpp"
+#include "agent_manager.hpp"
 #include "llm_client.hpp"
 #include "tool_registry.hpp"
 #include "llm_utils.hpp"
@@ -94,6 +94,9 @@ struct ChatApp : std::enable_shared_from_this<ChatApp>
 
     IModuleCache* mod_cache = nullptr;
     std::map<std::string, AppInstance> instances;
+
+    std::string chatId;
+    bool isGroupChat = true;
 
     std::vector<std::shared_ptr<agent::IAgentChat>> agents;
 
@@ -924,9 +927,15 @@ void* app_create(const char* config_json)
     if (cachePtr)
         ptr->mod_cache = reinterpret_cast<IModuleCache*>(static_cast<uintptr_t>(cachePtr));
 
+    ptr->chatId = agent::AgentManager::instance().allocId();
+    agent::AgentManager::instance().setChatType(ptr->chatId, agent::ChatType::GROUP);
+
     try {
-        auto mainAi = agent::createAgentFromProfile(std::string(PROJ_ROOT) + "/module/agent/config/default.yml");
-        mainAi->setResponseCallback([raw = ptr](boost::json::object msg) {
+        auto mainAi = agent::AgentManager::instance().createFromYaml(
+            std::string(PROJ_ROOT) + "/module/agent/config/default.yml");
+        auto mainAiId = agent::AgentManager::instance().allocId();
+        agent::AgentManager::instance().joinChat(mainAiId, ptr->chatId, agent::ChatType::GROUP);
+        mainAi->setResponseCallback([raw = ptr.get()](boost::json::object msg) {
             if (raw->cancelled) return;
             boost::json::object out;
             out["type"] = "agent_msg";

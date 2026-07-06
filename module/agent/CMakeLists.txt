@@ -20,6 +20,7 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output/lib)
 file(GLOB SRC_SOURCES CONFIGURE_DEPENDS
     src/agent_server.cpp
     src/agent_chat_participant.cpp
+    src/agent_manager.cpp
 )
 add_library(agent SHARED ${SRC_SOURCES})
 set(PROJ_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../../)
