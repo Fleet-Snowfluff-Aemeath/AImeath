@@ -10,6 +10,10 @@
         :key="i"
         :class="['msg', m.isSelf ? 'msg-self' : 'msg-other']"
       >
+        <div v-if="!m.isSelf && m.sender" class="msg-sender">
+          <span v-if="m.senderAvatar" class="sender-avatar">{{ m.senderAvatar }}</span>
+          <span class="sender-name">{{ m.sender }}</span>
+        </div>
         <div v-if="m.type === 'embed'" class="bubble bubble-embed" :class="'bubble-'+m.kind">
           <div v-if="m.kind === 'image'" class="embed-body">
             <img :src="m.url" :alt="m.title" class="embed-img" @click="previewImg(m.url)" />
@@ -139,11 +143,13 @@ function scheduleFlush() {
 }
 
 ch.onMessage((data) => {
+  const sender = data.sender_name || ''
+  const senderAvatar = data.sender_avatar || ''
   if (data.type === 'embed') {
-    messages.value.push({ isSelf: false, type: 'embed', kind: data.kind, url: data.url, title: data.title, name: data.name, text: data.text || '' })
+    messages.value.push({ isSelf: false, type: 'embed', kind: data.kind, url: data.url, title: data.title, name: data.name, text: data.text || '', sender, senderAvatar })
     scrollBottom()
   } else if (data.type === 'stream_start') {
-    messages.value.push({ text: '', reasoning: '', isSelf: false })
+    messages.value.push({ text: '', reasoning: '', isSelf: false, sender, senderAvatar })
     streamingIdx.value = messages.value.length - 1
     scrollBottom()
     startPoll()
@@ -165,6 +171,14 @@ ch.onMessage((data) => {
       messages.value[streamingIdx.value].text = '⚠️ ' + data.msg
     }
     streamingIdx.value = -1
+    scrollBottom()
+  } else if (data.type === 'agent_msg') {
+    messages.value.push({
+      text: data.content || '',
+      isSelf: false,
+      sender: data.sender_name || 'Agent',
+      senderAvatar: data.sender_avatar || '🤖',
+    })
     scrollBottom()
   } else if (data.type === 'agent') {
     if (data.action === 'open_app') {
@@ -272,7 +286,7 @@ function send() {
   if (WID) p.window_id = WID
   if (DNAME) p.display_name = DNAME
   ch.send(p)
-  messages.value.push({ text, isSelf: true })
+  messages.value.push({ text, isSelf: true, sender: '用户', senderAvatar: '' })
   input.value = ''
   scrollBottom()
 }
@@ -358,6 +372,24 @@ onBeforeUnmount(() => ch.close())
 
 .msg-other {
   justify-content: flex-start;
+}
+
+.msg-sender {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 12px 2px;
+  font-size: 12px;
+}
+
+.sender-avatar {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.sender-name {
+  color: #6b7280;
+  font-weight: 500;
 }
 
 .bubble {
