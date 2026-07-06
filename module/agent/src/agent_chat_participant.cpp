@@ -10,6 +10,9 @@
 #include "llm_client.hpp"
 #include "llm_utils.hpp"
 #include "config.hpp"
+#include "tool_registry.hpp"
+
+static boost::json::array s_toolDefs;
 
 namespace agent {
 
@@ -50,8 +53,10 @@ void AgentChatParticipant::onUserMessage(
     std::string body = llm::build_chat_body(msgs, profile_.model, false, true,
         profile_.temperature, profile_.max_tokens);
 
-    if (!profile_.tools.empty()) {
-        llm::inject_tools(body, true, profile_.tools);
+    if (profile_.enable_tools) {
+        if (s_toolDefs.empty())
+            s_toolDefs = agent::loadToolsFromYaml("module/agent/config/tools.yml");
+        llm::inject_tools(body, true, profile_.tools, &s_toolDefs);
     }
 
     std::string apiKey = Config::instance().deepSeekApiKey();

@@ -22,6 +22,8 @@ file(GLOB SRC_SOURCES CONFIGURE_DEPENDS
     src/agent_chat_participant.cpp
 )
 add_library(agent SHARED ${SRC_SOURCES})
+set(PROJ_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../../)
+target_compile_definitions(agent PRIVATE PROJ_ROOT="${PROJ_ROOT}")
 set(YAMLCPP_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../3rd/yaml-cpp-yaml-cpp-0.9.0/install)
 find_library(YAMLCPP_LIB yaml-cpp PATHS ${YAMLCPP_DIR}/lib NO_DEFAULT_PATH)
 if(NOT YAMLCPP_LIB)

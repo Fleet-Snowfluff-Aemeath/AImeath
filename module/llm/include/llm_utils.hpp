@@ -246,18 +246,20 @@ inline boost::json::array get_default_tools()
 }
 
 inline void inject_tools(std::string& body, bool with_tools,
-    const std::vector<std::string>& toolWhitelist = {})
+    const std::vector<std::string>& toolWhitelist = {},
+    const boost::json::array* toolDefs = nullptr)
 {
     if (!with_tools) return;
     auto body_json = boost::json::parse(body);
     if (!body_json.is_object()) return;
-    if (toolWhitelist.empty()) {
+    if (!toolDefs) {
         body_json.as_object()["tools"] = get_default_tools();
+    } else if (toolWhitelist.empty()) {
+        body_json.as_object()["tools"] = *toolDefs;
     } else {
         boost::json::array filtered;
-        auto allTools = get_default_tools();
-        for (auto& t : allTools) {
-            std::string name = t.as_object()["function"].as_object()["name"].as_string().c_str();
+        for (auto& t : *toolDefs) {
+            std::string name = t.at("function").as_object().at("name").as_string().c_str();
             for (auto& w : toolWhitelist) {
                 if (name == w) {
                     filtered.push_back(t);
