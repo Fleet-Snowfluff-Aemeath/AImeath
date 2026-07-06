@@ -40,7 +40,7 @@ void AgentChatParticipant::doLlmRound(const boost::json::array& msgs, int round)
 
     if (profile_.enable_tools) {
         if (s_toolDefs.empty())
-            s_toolDefs = agent::loadToolsFromYaml("module/agent/config/tools.yml");
+            s_toolDefs = agent::loadToolsFromYaml(std::string(PROJ_ROOT) + "/module/agent/config/tools.yml");
         llm::inject_tools(body, true, profile_.tools, s_toolDefs);
     }
 

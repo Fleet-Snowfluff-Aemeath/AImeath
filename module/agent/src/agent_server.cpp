@@ -37,7 +37,7 @@ static boost::json::object buildSystemMsg()
 {
     static std::string cached;
     if (cached.empty()) {
-        YAML::Node config = YAML::LoadFile("module/agent/config/agent_prompt.yml");
+        YAML::Node config = YAML::LoadFile(std::string(PROJ_ROOT) + "/module/agent/config/agent_prompt.yml");
         cached = config["system_prompt"].as<std::string>();
     }
     boost::json::object msg;
@@ -50,14 +50,14 @@ boost::json::array AgentServer::buildTools()
 {
     static boost::json::array cached;
     if (cached.empty())
-        cached = loadToolsFromYaml("module/agent/config/tools.yml");
+        cached = loadToolsFromYaml(std::string(PROJ_ROOT) + "/module/agent/config/tools.yml");
     return cached;
 }
 
 
 void AgentServer::registerBuiltinTools()
 {
-    YAML::Node config = YAML::LoadFile("module/agent/config/tools.yml");
+    YAML::Node config = YAML::LoadFile(std::string(PROJ_ROOT) + "/module/agent/config/tools.yml");
     for (auto t : config["tools"]) {
         std::string name = t["name"].as<std::string>();
         tools_[name] = {name, "", {}, nullptr};
@@ -159,7 +159,7 @@ void AgentServer::handleUserMessage(const std::string& text)
 
     std::string body = llm::build_chat_body(msgs);
     if (s_agentTools.empty())
-        s_agentTools = loadToolsFromYaml("module/agent/config/tools.yml");
+        s_agentTools = loadToolsFromYaml(std::string(PROJ_ROOT) + "/module/agent/config/tools.yml");
     boost::json::array tools = s_agentTools;
 
     boost::json::value parsed = boost::json::parse(body);

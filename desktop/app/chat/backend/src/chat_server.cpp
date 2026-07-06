@@ -997,6 +997,9 @@ void* app_create(const char* config_json)
         ptr->current_sender_name = mainAi->getName();
         auto mainAiId = agent::AgentManager::instance().allocId();
         agent::AgentManager::instance().joinChat(mainAiId, ptr->chatId, agent::ChatType::GROUP);
+        mainAi->setToolExecutor([raw = ptr.get()](const std::string& name, const std::string& args) -> std::string {
+            return executeTool(raw, name, args);
+        });
         mainAi->setStreamCallback([raw = ptr.get()](boost::json::object ev) {
             if (raw->cancelled) return;
             raw->push_output(std::move(ev));
