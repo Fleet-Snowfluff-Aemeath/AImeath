@@ -461,7 +461,7 @@ onBeforeUnmount(() => ch.close())
 }
 
 .msg-top-self {
-  flex-direction: row-reverse;
+  justify-content: flex-end;
 }
 
 .msg-name {
