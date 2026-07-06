@@ -47,10 +47,11 @@ void AgentChatParticipant::onUserMessage(
         msgs.push_back(std::move(copy));
     }
 
-    std::string body = llm::build_chat_body(msgs, profile_.model, false, true);
+    std::string body = llm::build_chat_body(msgs, profile_.model, false, true,
+        profile_.temperature, profile_.max_tokens);
 
     if (!profile_.tools.empty()) {
-        llm::inject_tools(body, true);
+        llm::inject_tools(body, true, profile_.tools);
     }
 
     std::string apiKey = Config::instance().deepSeekApiKey();

@@ -463,7 +463,7 @@ onBeforeUnmount(() => ch.close())
 }
 
 .msg-name {
-  font-size: 20px;
+  font-size: 15px;
   color: #6b7280;
   font-weight: 500;
   padding-bottom: 2px;

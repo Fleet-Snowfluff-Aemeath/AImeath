@@ -11,12 +11,16 @@ namespace llm {
 inline std::string build_chat_body(const boost::json::array& messages,
                                    const std::string& model = "deepseek-v4-flash",
                                    bool stream = true,
-                                   bool thinking = true)
+                                   bool thinking = true,
+                                   double temperature = 0.7,
+                                   int max_tokens = 4096)
 {
     boost::json::object body;
     body["model"] = model;
     body["messages"] = messages;
     body["stream"] = stream;
+    body["temperature"] = temperature;
+    body["max_tokens"] = max_tokens;
     if (thinking)
         body["thinking"] = {{"type", "enabled"}, {"budget_tokens", 4096}};
     return boost::json::serialize(body);
@@ -241,12 +245,28 @@ inline boost::json::array get_default_tools()
     return tools;
 }
 
-inline void inject_tools(std::string& body, bool with_tools)
+inline void inject_tools(std::string& body, bool with_tools,
+    const std::vector<std::string>& toolWhitelist = {})
 {
     if (!with_tools) return;
     auto body_json = boost::json::parse(body);
     if (!body_json.is_object()) return;
-    body_json.as_object()["tools"] = get_default_tools();
+    if (toolWhitelist.empty()) {
+        body_json.as_object()["tools"] = get_default_tools();
+    } else {
+        boost::json::array filtered;
+        auto allTools = get_default_tools();
+        for (auto& t : allTools) {
+            std::string name = t.as_object()["function"].as_object()["name"].as_string().c_str();
+            for (auto& w : toolWhitelist) {
+                if (name == w) {
+                    filtered.push_back(t);
+                    break;
+                }
+            }
+        }
+        body_json.as_object()["tools"] = std::move(filtered);
+    }
     body_json.as_object()["tool_choice"] = boost::json::string("auto");
     body = boost::json::serialize(body_json);
 }
