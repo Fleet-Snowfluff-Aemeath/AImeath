@@ -138,23 +138,24 @@ static void BM_LlmBuildChatBody(benchmark::State& state)
 }
 BENCHMARK(BM_LlmBuildChatBody)->Arg(1)->Arg(10)->Arg(100);
 
-static void BM_LlmGetDefaultTools(benchmark::State& state)
+static void BM_LlmLoadTools(benchmark::State& state)
 {
     for (auto _ : state)
     {
-        auto tools = llm::get_default_tools();
+        auto& tools = benchTools();
         benchmark::DoNotOptimize(tools);
     }
 }
-BENCHMARK(BM_LlmGetDefaultTools);
+BENCHMARK(BM_LlmLoadTools);
 
 static void BM_LlmInjectTools(benchmark::State& state)
 {
     std::string body = R"({"model":"test","messages":[{"role":"user","content":"hello"}]})";
+    auto& tools = benchTools();
     for (auto _ : state)
     {
         std::string copy = body;
-        llm::inject_tools(copy, true);
+        llm::inject_tools(copy, true, {}, tools);
         benchmark::DoNotOptimize(copy);
     }
 }
@@ -163,10 +164,11 @@ BENCHMARK(BM_LlmInjectTools);
 static void BM_LlmInjectToolsDisabled(benchmark::State& state)
 {
     std::string body = R"({"model":"test","messages":[{"role":"user","content":"hello"}]})";
+    auto& tools = benchTools();
     for (auto _ : state)
     {
         std::string copy = body;
-        llm::inject_tools(copy, false);
+        llm::inject_tools(copy, false, {}, tools);
         benchmark::DoNotOptimize(copy);
     }
 }
