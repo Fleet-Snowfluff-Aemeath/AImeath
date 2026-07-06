@@ -22,7 +22,9 @@
 #include <fstream>
 
 #include "agent_chat_api.hpp"
+#include "agent_profile.hpp"
 #include "llm_client.hpp"
+#include "tool_registry.hpp"
 #include "llm_utils.hpp"
 #include "config.hpp"
 #include "ws_server.hpp"
@@ -785,12 +787,19 @@ static void handleUserMessageAsync(ChatApp* app, const std::string& text, const 
     app->push_output(std::move(start));
 }
 
+static boost::json::array& chatToolDefs() {
+    static boost::json::array tools;
+    if (tools.empty())
+        tools = agent::loadToolsFromYaml("module/agent/config/tools.yml");
+    return tools;
+}
+
 static void doLlmCall(ChatApp* app, const std::string& body,
                       bool withTools,
                       std::function<void(std::string, std::string, std::vector<LlmToolCall>)> onDone)
 {
     std::string finalBody = body;
-    llm::inject_tools(finalBody, withTools);
+    llm::inject_tools(finalBody, withTools, {}, chatToolDefs());
 
     std::string apiKey = Config::instance().deepSeekApiKey();
     if (apiKey.empty()) {

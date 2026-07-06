@@ -56,7 +56,7 @@ void AgentChatParticipant::onUserMessage(
     if (profile_.enable_tools) {
         if (s_toolDefs.empty())
             s_toolDefs = agent::loadToolsFromYaml("module/agent/config/tools.yml");
-        llm::inject_tools(body, true, profile_.tools, &s_toolDefs);
+        llm::inject_tools(body, true, profile_.tools, s_toolDefs);
     }
 
     std::string apiKey = Config::instance().deepSeekApiKey();
