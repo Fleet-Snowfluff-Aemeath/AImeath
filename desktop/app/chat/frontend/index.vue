@@ -12,7 +12,10 @@
         :class="['msg', m.isSelf ? 'msg-self' : 'msg-other']"
       >
         <div class="msg-wrapper" :class="m.isSelf ? 'wrapper-self' : 'wrapper-other'">
-        <div v-if="m.senderAvatar" class="msg-avatar" :class="m.isSelf ? 'avatar-self' : 'avatar-other'">{{ m.senderAvatar }}</div>
+        <div v-if="m.senderAvatar" class="msg-avatar" :class="m.isSelf ? 'avatar-self' : 'avatar-other'">
+          <img v-if="isImageUrl(m.senderAvatar)" :src="m.senderAvatar" class="avatar-img" />
+          <span v-else>{{ m.senderAvatar }}</span>
+        </div>
         <div class="msg-content-col">
         <div v-if="m.sender" class="msg-name">{{ m.sender }}</div>
         <div v-if="m.type === 'embed'" class="bubble bubble-embed" :class="'bubble-'+m.kind">
@@ -305,6 +308,10 @@ function stopStream() {
   streamingIdx.value = -1
 }
 
+function isImageUrl(val) {
+  return /^(https?:|\/)/i.test(val)
+}
+
 window.addEventListener('message', (e) => {
   if (e.data?.type === 'window_closing') {
     ch.send({ action: 'close_window', window_id: WID })
@@ -484,6 +491,13 @@ onBeforeUnmount(() => ch.close())
 
 .msg-other .msg-avatar {
   background: #dbeafe;
+}
+
+.avatar-img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
 }
 
 .bubble {
