@@ -11,13 +11,11 @@
         :key="i"
         :class="['msg', m.isSelf ? 'msg-self' : 'msg-other']"
       >
-        <div v-if="!m.isSelf && m.senderAvatar" class="msg-avatar avatar-other">{{ m.senderAvatar }}</div>
-        <div class="msg-wrapper">
-        <div v-if="m.sender" class="msg-top-row" :class="m.isSelf ? 'msg-top-self' : ''">
-          <span class="msg-name">{{ m.senderAvatar }}{{ m.sender }}</span>
-        </div>
-        <div class="msg-content-row" :class="m.isSelf ? 'msg-row-self' : ''">
-          <div v-if="m.type === 'embed'" class="bubble bubble-embed" :class="'bubble-'+m.kind">
+        <div class="msg-wrapper" :class="m.isSelf ? 'wrapper-self' : 'wrapper-other'">
+        <div v-if="m.senderAvatar" class="msg-avatar" :class="m.isSelf ? 'avatar-self' : 'avatar-other'">{{ m.senderAvatar }}</div>
+        <div class="msg-content-col">
+        <div v-if="m.sender" class="msg-name">{{ m.sender }}</div>
+        <div v-if="m.type === 'embed'" class="bubble bubble-embed" :class="'bubble-'+m.kind">
           <div v-if="m.kind === 'image'" class="embed-body">
             <img :src="m.url" :alt="m.title" class="embed-img" @click="previewImg(m.url)" />
             <div v-if="m.title" class="embed-title">{{ m.title }}</div>
@@ -49,8 +47,6 @@
           <div v-html="renderMarkdown(m.text)"></div>
         </div>
         </div>
-        </div>
-        <div v-if="m.isSelf && m.senderAvatar" class="msg-avatar avatar-self">{{ m.senderAvatar }}</div>
       </div>
     </main>
     <footer class="chat-footer">
@@ -445,42 +441,32 @@ onBeforeUnmount(() => ch.close())
 
 .msg-wrapper {
   display: flex;
-  flex-direction: column;
   max-width: 70%;
-}
-
-.msg-self .msg-wrapper {
-  align-items: flex-end;
-}
-
-.msg-other .msg-wrapper {
   align-items: flex-start;
+  gap: 8px;
 }
 
-.msg-top-row {
+.wrapper-self {
+  flex-direction: row-reverse;
+}
+
+.msg-content-col {
   display: flex;
-  align-items: flex-start;
-  padding: 0 0 2px;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
 }
 
-.msg-top-self {
-  justify-content: flex-end;
+.msg-self .msg-content-col {
+  align-items: flex-end;
 }
 
 .msg-name {
   font-size: 20px;
   color: #6b7280;
   font-weight: 500;
-  line-height: 50px;
-  padding: 0 8px;
-}
-
-.msg-content-row {
-  display: flex;
-}
-
-.msg-row-self {
-  justify-content: flex-end;
+  padding-bottom: 2px;
+  white-space: nowrap;
 }
 
 .msg-avatar {
@@ -497,14 +483,6 @@ onBeforeUnmount(() => ch.close())
 
 .msg-other .msg-avatar {
   background: #dbeafe;
-}
-
-.avatar-self {
-  order: 2;
-}
-
-.avatar-other {
-  order: 0;
 }
 
 .bubble {
