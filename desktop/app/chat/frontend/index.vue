@@ -798,6 +798,7 @@ onBeforeUnmount(() => ch.close())
   line-height: 1.5;
   min-height: 40px;
   max-height: 200px;
+  overflow-y: auto;
 }
 
 .chat-input:focus {
