@@ -829,23 +829,44 @@ static void handleUserMessageAsync(ChatApp* app, const std::string& text, const 
     }
 
     if (!app->agents.empty()) {
-        std::vector<boost::json::object> histCopy;
-        {
-            std::lock_guard<std::mutex> lock(app->mtx);
-            histCopy = app->history;
-        }
-        if (!targetAgent.empty()) {
-            for (auto& agent : app->agents) {
-                if (agent->getName() == targetAgent) {
-                    agent->onUserMessage(actualText, sender_name, histCopy);
-                    break;
+        auto idx = std::make_shared<int>(0);
+        auto oldCallbacks = std::make_shared<std::vector<agent::IAgentChat::ResponseCallback>>();
+        for (auto& ag : app->agents) oldCallbacks->push_back(nullptr);
+
+        std::function<void()> processNext;
+        processNext = [app, idx, &text, &sender_name, &targetAgent, &actualText, oldCallbacks, &processNext]() {
+            if (app->cancelled) return;
+            int i = (*idx)++;
+            if (i >= static_cast<int>(app->agents.size())) {
+                for (size_t j = 0; j < app->agents.size(); ++j)
+                    if ((*oldCallbacks)[j])
+                        app->agents[j]->setResponseCallback(std::move((*oldCallbacks)[j]));
+                return;
+            }
+
+            std::vector<boost::json::object> h;
+            {
+                std::lock_guard<std::mutex> lock(app->mtx);
+                h = app->history;
+            }
+
+            if (!targetAgent.empty()) {
+                if (app->agents[i]->getName() != targetAgent) { processNext(); return; }
+                app->agents[i]->onUserMessage(actualText, sender_name, h);
+            } else {
+                app->agents[i]->onUserMessage(text, sender_name, h);
+            }
+
+            (*oldCallbacks)[i] = [app, i, processNext](boost::json::object msg) {
+                if (!app->cancelled) {
+                    std::lock_guard<std::mutex> lock(app->mtx);
+                    app->history.push_back(std::move(msg));
                 }
-            }
-        } else {
-            for (auto& agent : app->agents) {
-                agent->onUserMessage(text, sender_name, histCopy);
-            }
-        }
+                processNext();
+            };
+            app->agents[i]->setResponseCallback((*oldCallbacks)[i]);
+        };
+        processNext();
     }
 
 }
