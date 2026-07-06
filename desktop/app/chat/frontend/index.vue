@@ -97,7 +97,7 @@
 </template>
 
 <script setup>
-import { ref, computed, nextTick, onBeforeUnmount, onMounted } from 'vue'
+import { ref, computed, reactive, nextTick, onBeforeUnmount, onMounted } from 'vue'
 import { marked } from 'marked'
 import mermaid from 'mermaid'
 import { createChannel } from '../../../src/services/channel.js'
@@ -126,7 +126,7 @@ const showMentions = ref(false)
 const mentionFilter = ref('')
 const connected = ref(false)
 const streamingIdx = ref(-1)
-const streamIdxBySender = {}
+const streamIdxBySender = reactive({})
 let pollTimer = null
 let deltaBuffer = ''
 let reasoningBuffer = ''
@@ -208,17 +208,12 @@ ch.onMessage((data) => {
     startPoll()
   } else if (data.type === 'reasoning') {
     const idx = streamIdxBySender[sender || '']
-    if (idx != null) {
-      reasoningBuffer += data.text
-      scheduleFlush(sender || '')
-    }
+    if (idx != null) messages.value[idx].reasoning += data.text
+    scrollBottom()
   } else if (data.type === 'delta') {
     const idx = streamIdxBySender[sender || '']
-    if (idx != null) {
-      deltaBuffer += data.text
-      scheduleFlush(sender || '')
-    }
-  } else if (data.type === 'stream_end') {
+    if (idx != null) messages.value[idx].text += data.text
+    scrollBottom() else if (data.type === 'stream_end') {
     const idx = streamIdxBySender[sender || '']
     if (idx != null) {
       flushStream(sender || '')
