@@ -49,6 +49,7 @@
           <div v-html="renderMarkdown(m.text)"></div>
         </div>
         </div>
+        </div>
         <div v-if="m.isSelf && m.senderAvatar" class="msg-avatar avatar-self">{{ m.senderAvatar }}</div>
       </div>
     </main>
