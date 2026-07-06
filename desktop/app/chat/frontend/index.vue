@@ -11,7 +11,7 @@
         :key="i"
         :class="['msg', m.isSelf ? 'msg-self' : 'msg-other']"
       >
-        <div v-if="!m.isSelf && m.sender" class="msg-sender">
+        <div v-if="m.sender" class="msg-sender" :class="{ 'self-sender': m.isSelf }">
           <span v-if="m.senderAvatar" class="sender-avatar">{{ m.senderAvatar }}</span>
           <span class="sender-name">{{ m.sender }}</span>
         </div>
@@ -399,6 +399,10 @@ onBeforeUnmount(() => ch.close())
 .sender-name {
   color: #6b7280;
   font-weight: 500;
+}
+
+.self-sender {
+  justify-content: flex-end;
 }
 
 .bubble {

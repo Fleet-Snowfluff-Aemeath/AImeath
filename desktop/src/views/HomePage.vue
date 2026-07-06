@@ -150,12 +150,13 @@ function nextAppIndex(appKey) {
   return maxN + 1
 }
 
-function iframeSrcWithWid(url, wid, name) {
+function iframeSrcWithWid(url, wid, name, avatar) {
   const [path, qs] = (url || '').split('?')
   const base = window.location.origin + window.location.pathname.replace(/\/?$/, '')
   const params = new URLSearchParams(qs || '')
   if (wid) params.set('wid', wid)
   if (name) params.set('name', encodeURIComponent(name))
+  if (avatar) params.set('avatar', encodeURIComponent(avatar))
   const query = params.toString()
   return `${base}/#${path}${query ? '?' + query : ''}`
 }
@@ -186,8 +187,8 @@ function openApp(app, opts) {
       const uniqueId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
       const params = `_t=${uniqueId}`
       const tabSrc = opts?.tabParams
-        ? iframeSrcWithWid(app.url + opts.tabParams + '&' + params, w.windowId, tabName)
-        : iframeSrcWithWid(app.url + '?' + params, w.windowId, tabName)
+        ? iframeSrcWithWid(app.url + opts.tabParams + '&' + params, w.windowId, tabName, '👤')
+        : iframeSrcWithWid(app.url + '?' + params, w.windowId, tabName, '👤')
       w.tabs.push({ name: tabName, icon: app.icon, src: tabSrc })
       w.activeTab = w.tabs.length - 1
       w.name = tabName
@@ -200,14 +201,14 @@ function openApp(app, opts) {
   const id = `w${winIdSeq++}`
   const windowId = genWindowId()
   const winName = `${app.name}-${nextAppIndex(app.url)}`
-  const initialTab = { name: winName, icon: app.icon, src: iframeSrcWithWid(app.url, windowId, winName) }
+  const initialTab = { name: winName, icon: app.icon, src: iframeSrcWithWid(app.url, windowId, winName, '👤') }
   windows[id] = {
     appKey: app.url,
     name: winName,
     icon: app.icon,
     url: app.url,
     windowId,
-    src: iframeSrcWithWid(app.url, windowId, winName),
+    src: iframeSrcWithWid(app.url, windowId, winName, '👤'),
     x: 40 + cascade,
     y: 40 + cascade,
     w: fixed ? 560 : 820,
@@ -305,7 +306,7 @@ function detachTab(id, ti, x, y) {
   const tab = win.tabs[ti]
   const newName = `${tab.name}`
   const newWid = genWindowId()
-  const newSrc = iframeSrcWithWid(win.url, newWid, newName)
+  const newSrc = iframeSrcWithWid(win.url, newWid, newName, '👤')
 
   const newTab = { name: newName, icon: tab.icon, src: newSrc }
   const newId = `w${winIdSeq++}`
