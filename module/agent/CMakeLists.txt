@@ -85,5 +85,9 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
         DEPENDS ${BENCH_TARGETS}
         COMMENT "Running all benchmarks..."
     )
+else()
+    add_custom_target(run_bench
+        COMMAND ${CMAKE_COMMAND} -E echo "Benchmarks skipped on Linux"
+    )
 endif()
 endif()
