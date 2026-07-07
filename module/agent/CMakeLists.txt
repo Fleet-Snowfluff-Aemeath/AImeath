@@ -22,7 +22,17 @@ file(GLOB SRC_SOURCES CONFIGURE_DEPENDS
 add_library(agent SHARED ${SRC_SOURCES})
 set(PROJ_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../../)
 target_compile_definitions(agent PRIVATE PROJ_ROOT="${PROJ_ROOT}")
-find_package(yaml-cpp REQUIRED)
+find_package(yaml-cpp QUIET)
+if(NOT yaml-cpp_FOUND)
+    include(FetchContent)
+    FetchContent_Declare(yaml-cpp
+        GIT_REPOSITORY https://github.com/jbeder/yaml-cpp.git
+        GIT_TAG yaml-cpp-0.8.0
+        EXCLUDE_FROM_ALL
+        SYSTEM
+    )
+    FetchContent_MakeAvailable(yaml-cpp)
+endif()
 
 target_include_directories(agent PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
