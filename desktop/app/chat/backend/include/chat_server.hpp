@@ -8,8 +8,6 @@
 #include <memory>
 
 #include <boost/json.hpp>
-#include <boost/beast/core.hpp>
-#include <boost/beast/websocket.hpp>
 
 #include "app_api.hpp"
 #include "iface_mod.hpp"
@@ -37,7 +35,6 @@ struct ChatApp : std::enable_shared_from_this<ChatApp>
     std::atomic<bool> cancelled{false};
     std::atomic<bool> streaming{false};
     int round = 0;
-    int consecutive_tool_rounds = 0;
 
     app_output_fn output_cb = nullptr;
     void* output_udata = nullptr;
@@ -52,7 +49,6 @@ struct ChatApp : std::enable_shared_from_this<ChatApp>
     std::map<std::string, AppInstance> instances;
 
     std::string chatId;
-    bool isGroupChat = true;
 
     std::vector<std::shared_ptr<agent::IAgentChat>> agents;
 
@@ -62,6 +58,3 @@ struct ChatApp : std::enable_shared_from_this<ChatApp>
 
     void push_output(boost::json::value val);
 };
-
-void chatServe(boost::beast::websocket::stream<boost::beast::tcp_stream>& ws,
-               const std::string& first_msg);
