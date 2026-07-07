@@ -13,9 +13,6 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output/lib)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output/lib)
 
 find_package(Boost 1.91 REQUIRED COMPONENTS json)
-if(BOOST_ROOT AND NOT EXISTS "${BOOST_ROOT}")
-    set(BOOST_ROOT "" CACHE PATH "Boost installation root directory (clear to search system paths)" FORCE)
-endif()
 find_package(OpenSSL REQUIRED)
 
 file(GLOB SRC_SOURCES CONFIGURE_DEPENDS

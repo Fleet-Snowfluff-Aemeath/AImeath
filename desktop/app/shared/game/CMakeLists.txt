@@ -8,9 +8,6 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(Boost 1.91 REQUIRED COMPONENTS json)
-if(BOOST_ROOT AND NOT EXISTS "${BOOST_ROOT}")
-    set(BOOST_ROOT "" CACHE PATH "Boost installation root directory (clear to search system paths)" FORCE)
-endif()
 
 add_library(game_shared INTERFACE)
 target_include_directories(game_shared INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/include)
