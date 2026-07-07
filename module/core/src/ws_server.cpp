@@ -28,9 +28,9 @@ Session::~Session()
         connection_count_->fetch_sub(1, std::memory_order_release);
     if (closing_) return;
     if (!app_name_.empty()) {
-        Config::instance().sessionRegistry().unregisterSession(app_name_, this);
+        SessionManager::instance().unregisterSession(app_name_, this);
         if (!window_id_.empty())
-            Config::instance().sessionRegistry().unregisterWindow(window_id_);
+            SessionManager::instance().unregisterWindow(window_id_);
     }
 }
 
@@ -229,7 +229,7 @@ void Session::route_and_setup()
         AppPtr restoredApp;
         AppModule restoredMod;
         std::string restoredName;
-        auto& reg = Config::instance().sessionRegistry();
+        auto& reg = SessionManager::instance();
         if (reg.restoreApp(window_id_, restoredApp, restoredMod, restoredName)) {
             logger_.info() << "Restored app " << restoredName << " from " << window_id_;
             app_ = std::move(restoredApp);
@@ -281,11 +281,11 @@ void Session::route_and_setup()
     }
 
     if (app_name != appname::CHAT) {
-        Config::instance().sessionRegistry().registerSession(app_name, shared_from_this());
+        SessionManager::instance().registerSession(app_name, shared_from_this());
         if (!window_id_.empty())
-            Config::instance().sessionRegistry().registerWindow(window_id_, session_id_, app_name);
+            SessionManager::instance().registerWindow(window_id_, session_id_, app_name);
     } else {
-        Config::instance().sessionRegistry().registerSession(app_name, shared_from_this());
+        SessionManager::instance().registerSession(app_name, shared_from_this());
     }
 
     if (mod_.is_async()) {
@@ -346,7 +346,7 @@ void Session::on_read(beast::error_code /*ec*/, std::size_t /*n*/)
         logger_.info() << "[sess:" << this << "] received close_window";
         user_close_ = true;
         if (!window_id_.empty())
-            Config::instance().sessionRegistry().removeStashedApp(window_id_);
+            SessionManager::instance().removeStashedApp(window_id_);
         close_ws();
         return;
     }
@@ -374,7 +374,7 @@ void Session::process_legacy(const std::string& msg)
         logger_.info() << "[sess:" << this << "] legacy close_window";
         user_close_ = true;
         if (!window_id_.empty())
-            Config::instance().sessionRegistry().removeStashedApp(window_id_);
+            SessionManager::instance().removeStashedApp(window_id_);
         close_ws();
         return;
     }
@@ -476,7 +476,7 @@ void Session::do_cleanup()
 
     bool stashed = false;
     if (!window_id_.empty() && app_ && !user_close_ && !app_is_done()) {
-        auto& reg = Config::instance().sessionRegistry();
+        auto& reg = SessionManager::instance();
         reg.stashApp(window_id_, std::move(app_), std::move(mod_), app_name_);
         reg.unregisterSession(app_name_, this);
         stashed = true;
@@ -484,9 +484,9 @@ void Session::do_cleanup()
     }
 
     if (!stashed && !app_name_.empty()) {
-        Config::instance().sessionRegistry().unregisterSession(app_name_, this);
+        SessionManager::instance().unregisterSession(app_name_, this);
         if (!window_id_.empty())
-            Config::instance().sessionRegistry().unregisterWindow(window_id_);
+            SessionManager::instance().unregisterWindow(window_id_);
         boost::json::object doneState;
         doneState["over"] = true;
         doneState["reason"] = "session_closed";

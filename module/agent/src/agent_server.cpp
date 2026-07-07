@@ -606,7 +606,7 @@ boost::json::value AgentServer::executeTool(const std::string& name, const boost
         std::string text = a.at("text").as_string().c_str();
         if (a.contains("instance")) {
             int target = static_cast<int>(a.at("instance").as_int64());
-            auto targetSess = Config::instance().sessionRegistry().findSession("chat", target);
+            auto targetSess = SessionManager::instance().findSession("chat", target);
             if (targetSess) {
                 std::string cmd = "{\"text\":\"" + text + "\"}";
                 targetSess->call_app_process(cmd);
@@ -739,7 +739,7 @@ void AgentServer::injectStateIntoHistory(const std::string& appName, const boost
     std::lock_guard<std::mutex> lock(mtx_);
     boost::json::object sysMsg;
     sysMsg["role"] = "system";
-    std::string content = "应用 " + appName + " 状态变化: " + boost::json::serialize(state);
+    std::string content = "应用 " + appName + " 状态变�? " + boost::json::serialize(state);
     sysMsg["content"] = std::move(content);
     history_.push_back(std::move(sysMsg));
     AGENT_LOG("[state]", "injected state for " << appName << " into history");

@@ -73,7 +73,7 @@ boost::json::value AppManager::controlApp(const std::string& appName, const std:
 {
     APPMGR_LOG("info", "control app: " << appName << " cmd: " << commandJson.substr(0, 80));
 
-    auto& registry = Config::instance().sessionRegistry();
+    auto& registry = SessionManager::instance();
     if (appName == appname::CHAT) {
         auto sessions = registry.findAllSessions(appName);
         if (sessions.empty()) {
@@ -107,7 +107,7 @@ boost::json::value AppManager::controlApp(const std::string& appName, const std:
 
 boost::json::value AppManager::getAppState(const std::string& appName)
 {
-    auto& registry = Config::instance().sessionRegistry();
+    auto& registry = SessionManager::instance();
     auto sess = registry.findSession(appName, 0);
     if (sess) {
         std::string result = sess->call_app_process("{\"action\":\"get_state\"}");
@@ -122,7 +122,7 @@ boost::json::value AppManager::getAppState(const std::string& appName)
 
 boost::json::array AppManager::listApps()
 {
-    auto& registry = Config::instance().sessionRegistry();
+    auto& registry = SessionManager::instance();
     auto sessions = registry.listSessions();
     boost::json::array result;
     for (auto& [name, idx] : sessions) {
@@ -162,17 +162,17 @@ void AppManager::notifyStateChange(const std::string& appName, const boost::json
 
 void AppManager::registerWindow(const std::string& windowId, const std::string& sessionId, const std::string& appName)
 {
-    Config::instance().sessionRegistry().registerWindow(windowId, sessionId, appName);
+    SessionManager::instance().registerWindow(windowId, sessionId, appName);
     APPMGR_LOG("info", "registered window " << windowId << " session " << sessionId << " app " << appName);
 }
 
 void AppManager::unregisterWindow(const std::string& windowId)
 {
-    Config::instance().sessionRegistry().unregisterWindow(windowId);
+    SessionManager::instance().unregisterWindow(windowId);
     APPMGR_LOG("info", "unregistered window " << windowId);
 }
 
 boost::json::array AppManager::listActiveWindows()
 {
-    return Config::instance().sessionRegistry().listActiveWindows();
+    return SessionManager::instance().listActiveWindows();
 }

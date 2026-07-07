@@ -12,6 +12,7 @@
 #include "agent_chat_api.hpp"
 #include "agent_manager.hpp"
 #include "config.hpp"
+#include "ws_server.hpp"
 
 // ---- ChatApp state ----
 
@@ -221,7 +222,7 @@ static void drainAndPush(ChatApp* app)
 // 不存在时说明用户已关闭该应用 → 清理内部实例并返回空。
 static std::string appProcessOnApp(ChatApp* app, const std::string& appName, const std::string& input, int instance = 0)
 {
-    auto sess = Config::instance().sessionRegistry().findSession(appName, instance);
+    auto sess = SessionManager::instance().findSession(appName, instance);
     if (sess) {
         return sess->call_app_process(input);
     }
@@ -234,7 +235,7 @@ static std::string appProcessOnApp(ChatApp* app, const std::string& appName, con
 static AppInstance* ensureAppInstance(ChatApp* app, const std::string& name)
 {
     // 如果已经有活跃 session, 不需要内部实例
-    auto sess = Config::instance().sessionRegistry().findSession(name, 0);
+    auto sess = SessionManager::instance().findSession(name, 0);
     if (sess) return nullptr;
 
     auto it = app->instances.find(name);
@@ -268,7 +269,7 @@ static std::string executeTool(ChatApp* app, const std::string& name, const std:
 
         if (name == "open_app") {
             std::string appName = a["app"].as_string().c_str();
-            auto sess = Config::instance().sessionRegistry().findSession(appName, 0);
+            auto sess = SessionManager::instance().findSession(appName, 0);
             if (!sess) app->instances.erase(appName);
             ensureAppInstance(app, appName);
             boost::json::object agentMsg;
@@ -293,7 +294,7 @@ static std::string executeTool(ChatApp* app, const std::string& name, const std:
             boost::json::object cmd;
             cmd["action"] = "tick";
             cmd["value"] = value;
-            auto sess = Config::instance().sessionRegistry().findSession(appName, instance);
+            auto sess = SessionManager::instance().findSession(appName, instance);
             std::string result;
             if (sess) result = sess->call_app_process_and_notify(boost::json::serialize(cmd));
             else app->instances.erase(appName);
@@ -311,7 +312,7 @@ static std::string executeTool(ChatApp* app, const std::string& name, const std:
         if (name == "get_app_state") {
             std::string appName = a["app"].as_string().c_str();
             int instance = a.contains("instance") ? static_cast<int>(a["instance"].as_int64()) : 0;
-            auto sess = Config::instance().sessionRegistry().findSession(appName, instance);
+            auto sess = SessionManager::instance().findSession(appName, instance);
             if (sess) {
                 std::string state = sess->call_app_process(R"({"action":"get_state"})");
                 return R"({"success":true,"state":)" + state + "}";
@@ -319,7 +320,7 @@ static std::string executeTool(ChatApp* app, const std::string& name, const std:
             return R"({"success":false,"msg":"no instance"})";
         }
         if (name == "list_apps" || name == "list_active_windows") {
-            auto all = Config::instance().sessionRegistry().listSessions();
+            auto all = SessionManager::instance().listSessions();
             std::map<std::string, int> counts;
             for (auto& [n, idx] : all) counts[n] = std::max(counts[n], idx + 1);
             boost::json::object info;
@@ -336,7 +337,7 @@ static std::string executeTool(ChatApp* app, const std::string& name, const std:
             std::string text = a["text"].as_string().c_str();
             if (a.contains("instance")) {
                 int target = static_cast<int>(a["instance"].as_int64());
-                auto sess = Config::instance().sessionRegistry().findSession("chat", target);
+                auto sess = SessionManager::instance().findSession("chat", target);
                 if (sess) sess->call_app_process("{\"text\":\"" + text + "\"}");
             }
             return R"({"success":true})";

@@ -5,13 +5,13 @@
 #include <sstream>
 #include <algorithm>
 
-void SessionRegistry::registerSession(const std::string& appName, std::weak_ptr<Session> session)
+void SessionManager::registerSession(const std::string& appName, std::weak_ptr<Session> session)
 {
     std::lock_guard<std::mutex> lock(mtx_);
     sessions_[appName].push_back(std::move(session));
 }
 
-std::shared_ptr<Session> SessionRegistry::findSession(const std::string& appName, int index)
+std::shared_ptr<Session> SessionManager::findSession(const std::string& appName, int index)
 {
     std::lock_guard<std::mutex> lock(mtx_);
     auto it = sessions_.find(appName);
@@ -33,7 +33,7 @@ std::shared_ptr<Session> SessionRegistry::findSession(const std::string& appName
     return vec[index].lock();
 }
 
-std::vector<std::shared_ptr<Session>> SessionRegistry::findAllSessions(const std::string& appName)
+std::vector<std::shared_ptr<Session>> SessionManager::findAllSessions(const std::string& appName)
 {
     std::lock_guard<std::mutex> lock(mtx_);
     std::vector<std::shared_ptr<Session>> result;
@@ -57,7 +57,7 @@ std::vector<std::shared_ptr<Session>> SessionRegistry::findAllSessions(const std
     return result;
 }
 
-void SessionRegistry::unregisterSession(const std::string& appName, Session* ptr)
+void SessionManager::unregisterSession(const std::string& appName, Session* ptr)
 {
     std::lock_guard<std::mutex> lock(mtx_);
     auto it = sessions_.find(appName);
@@ -73,7 +73,7 @@ void SessionRegistry::unregisterSession(const std::string& appName, Session* ptr
         sessions_.erase(it);
 }
 
-std::vector<std::pair<std::string, int>> SessionRegistry::listSessions()
+std::vector<std::pair<std::string, int>> SessionManager::listSessions()
 {
     std::lock_guard<std::mutex> lock(mtx_);
     std::vector<std::pair<std::string, int>> result;
@@ -95,19 +95,19 @@ std::vector<std::pair<std::string, int>> SessionRegistry::listSessions()
     return result;
 }
 
-void SessionRegistry::registerWindow(const std::string& windowId, const std::string& sessionId, const std::string& appName)
+void SessionManager::registerWindow(const std::string& windowId, const std::string& sessionId, const std::string& appName)
 {
     std::lock_guard<std::mutex> lock(mtx_);
     windowMap_[windowId] = WinInfo{sessionId, appName};
 }
 
-void SessionRegistry::unregisterWindow(const std::string& windowId)
+void SessionManager::unregisterWindow(const std::string& windowId)
 {
     std::lock_guard<std::mutex> lock(mtx_);
     windowMap_.erase(windowId);
 }
 
-void SessionRegistry::stashApp(const std::string& windowId, AppPtr app, AppModule mod, std::string appName)
+void SessionManager::stashApp(const std::string& windowId, AppPtr app, AppModule mod, std::string appName)
 {
     if (windowId.empty()) return;
     std::lock_guard<std::mutex> lock(mtx_);
@@ -119,7 +119,7 @@ void SessionRegistry::stashApp(const std::string& windowId, AppPtr app, AppModul
     stashedApps_[windowId] = std::move(s);
 }
 
-bool SessionRegistry::restoreApp(const std::string& windowId, AppPtr& outApp, AppModule& outMod, std::string& outAppName)
+bool SessionManager::restoreApp(const std::string& windowId, AppPtr& outApp, AppModule& outMod, std::string& outAppName)
 {
     if (windowId.empty()) return false;
     std::lock_guard<std::mutex> lock(mtx_);
@@ -136,14 +136,14 @@ bool SessionRegistry::restoreApp(const std::string& windowId, AppPtr& outApp, Ap
     return true;
 }
 
-void SessionRegistry::removeStashedApp(const std::string& windowId)
+void SessionManager::removeStashedApp(const std::string& windowId)
 {
     if (windowId.empty()) return;
     std::lock_guard<std::mutex> lock(mtx_);
     stashedApps_.erase(windowId);
 }
 
-boost::json::array SessionRegistry::listActiveWindows()
+boost::json::array SessionManager::listActiveWindows()
 {
     std::lock_guard<std::mutex> lock(mtx_);
     boost::json::array result;
@@ -177,6 +177,12 @@ boost::json::array SessionRegistry::listActiveWindows()
     return result;
 }
 
+SessionManager& SessionManager::instance()
+{
+    static SessionManager mgr;
+    return mgr;
+}
+
 Config& Config::instance()
 {
     // C++11 function-static — thread-safe per standard
@@ -191,7 +197,7 @@ Config::Config()
 
 void Config::load()
 {
-    // L1: silent on failure — caller decides whether to warn/fallback.
+    // L1: silent on failure �?caller decides whether to warn/fallback.
     //     Both main.cpp and chat_server.cpp previously printed warnings;
     //     that responsibility stays at the call site.
     std::ifstream f("config.json");
