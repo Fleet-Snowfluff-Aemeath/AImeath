@@ -25,20 +25,15 @@ file(GLOB SRC_SOURCES CONFIGURE_DEPENDS
 add_library(agent SHARED ${SRC_SOURCES})
 set(PROJ_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../../)
 target_compile_definitions(agent PRIVATE PROJ_ROOT="${PROJ_ROOT}")
-set(YAMLCPP_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../3rd/yaml-cpp-yaml-cpp-0.9.0/install)
-find_library(YAMLCPP_LIB yaml-cpp PATHS ${YAMLCPP_DIR}/lib NO_DEFAULT_PATH)
-if(NOT YAMLCPP_LIB)
-    find_library(YAMLCPP_LIB yaml-cpp)
-endif()
+find_package(yaml-cpp REQUIRED)
 
 target_include_directories(agent PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../core/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../app/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../llm/include
-    ${YAMLCPP_DIR}/include
 )
-target_link_libraries(agent PUBLIC Boost::json core app llm ${YAMLCPP_LIB})
+target_link_libraries(agent PUBLIC Boost::json core app llm yaml-cpp::yaml-cpp)
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 find_package(GTest REQUIRED)

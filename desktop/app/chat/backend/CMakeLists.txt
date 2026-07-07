@@ -23,21 +23,16 @@ file(GLOB SRC_SOURCES CONFIGURE_DEPENDS
 )
 add_library(chat SHARED ${SRC_SOURCES})
 target_include_directories(chat PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
-set(YAMLCPP_DIR ${PROJ_ROOT}/3rd/yaml-cpp-yaml-cpp-0.9.0/install)
-find_library(YAMLCPP_LIB yaml-cpp PATHS ${YAMLCPP_DIR}/lib NO_DEFAULT_PATH)
-if(NOT YAMLCPP_LIB)
-    find_library(YAMLCPP_LIB yaml-cpp)
-endif()
+find_package(yaml-cpp REQUIRED)
 
 target_compile_definitions(chat PRIVATE PROJ_ROOT="${PROJ_ROOT}")
 
 target_include_directories(chat PRIVATE
     ${PROJ_ROOT}/module/app/include
     ${PROJ_ROOT}/module/agent/include
-    ${YAMLCPP_DIR}/include
 )
 
-target_link_libraries(chat PRIVATE Boost::json OpenSSL::SSL OpenSSL::Crypto core llm agent ${YAMLCPP_LIB})
+target_link_libraries(chat PRIVATE Boost::json OpenSSL::SSL OpenSSL::Crypto core llm agent yaml-cpp::yaml-cpp)
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 find_package(GTest REQUIRED)

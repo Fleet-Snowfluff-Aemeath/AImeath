@@ -4,6 +4,16 @@ project(AImeath LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+include(FetchContent)
+FetchContent_Declare(yaml-cpp
+    GIT_REPOSITORY https://github.com/jbeder/yaml-cpp.git
+    GIT_TAG yaml-cpp-0.8.0
+    EXCLUDE_FROM_ALL
+    SYSTEM
+    OVERRIDE_FIND_PACKAGE
+)
+FetchContent_MakeAvailable(yaml-cpp)
+
 file(GLOB MODULE_DIRS CONFIGURE_DEPENDS module/*)
 foreach(module_dir ${MODULE_DIRS})
     add_subdirectory(${module_dir})

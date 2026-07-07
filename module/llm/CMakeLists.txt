@@ -21,11 +21,7 @@ file(GLOB SRC_SOURCES CONFIGURE_DEPENDS
 add_library(llm SHARED ${SRC_SOURCES})
 target_include_directories(llm PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(llm PUBLIC OpenSSL::SSL OpenSSL::Crypto Boost::json)
-set(YAMLCPP_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../3rd/yaml-cpp-yaml-cpp-0.9.0/install)
-find_library(YAMLCPP_LIB yaml-cpp PATHS ${YAMLCPP_DIR}/lib NO_DEFAULT_PATH)
-if(NOT YAMLCPP_LIB)
-    find_library(YAMLCPP_LIB yaml-cpp)
-endif()
+find_package(yaml-cpp REQUIRED)
 
 # 功能测试 && 性能测试
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
@@ -35,10 +31,9 @@ file(GLOB TEST_SOURCES CONFIGURE_DEPENDS
 )
 add_executable(tests ${TEST_SOURCES})
 set_target_properties(tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output/test)
-target_link_libraries(tests llm GTest::GTest GTest::Main ${YAMLCPP_LIB})
+target_link_libraries(tests llm GTest::GTest GTest::Main yaml-cpp::yaml-cpp)
 target_include_directories(tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${YAMLCPP_DIR}/include
 )
 add_custom_target(run_tests
     COMMAND ${CMAKE_COMMAND} -E env LD_LIBRARY_PATH=${CMAKE_BINARY_DIR}/output/lib $<TARGET_FILE:tests>
@@ -50,10 +45,9 @@ find_package(benchmark REQUIRED)
 function(add_benchmark target src)
     add_executable(${target} ${src})
     set_target_properties(${target} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output/bench)
-    target_link_libraries(${target} PRIVATE llm benchmark::benchmark ${YAMLCPP_LIB})
+    target_link_libraries(${target} PRIVATE llm benchmark::benchmark yaml-cpp::yaml-cpp)
     target_include_directories(${target} PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/include
-        ${YAMLCPP_DIR}/include
     )
 endfunction()
 
