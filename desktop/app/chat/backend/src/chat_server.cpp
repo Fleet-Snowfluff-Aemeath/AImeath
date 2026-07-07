@@ -44,17 +44,9 @@ namespace asio  = boost::asio;
         std::cerr << "[" << _buf << "." << ms.count() << "] " << level << " " << msg << std::endl; \
     } while(0)
 
-struct ChatApp;
 static void processNextInQueue(ChatApp* app);
 static void handleUserMessageAsync(ChatApp* app, const std::string& text, const std::string& sender_name = "用户");
 static std::string executeTool(ChatApp* app, const std::string& name, const std::string& argsJson);
-
-struct AppInstance
-{
-    AppModule mod;
-    AppPtr handle;
-    std::string appName;
-};
 
 static std::string displayAvatar(const std::string& avatar) {
     if (avatar.empty()) return "";
@@ -62,39 +54,7 @@ static std::string displayAvatar(const std::string& avatar) {
     return avatar;
 }
 
-struct ChatApp : std::enable_shared_from_this<ChatApp>
-{
-    std::vector<boost::json::object> history;
-    std::vector<boost::json::object> pending_outputs;
-    MessageQueue<std::string> input_queue;
-    std::mutex mtx;
-    std::atomic<bool> cancelled{false};
-    std::atomic<bool> streaming{false};
-    int round = 0;
-    int consecutive_tool_rounds = 0;
-
-    app_output_fn output_cb = nullptr;
-    void* output_udata = nullptr;
-    void* io_ctx_ptr = nullptr;
-
-    std::shared_ptr<LlmClient> current_stream;
-    bool done = false;
-
-    std::shared_ptr<ChatApp> self_holder;
-
-    IModuleCache* mod_cache = nullptr;
-    std::map<std::string, AppInstance> instances;
-
-    std::string chatId;
-    bool isGroupChat = true;
-
-    std::vector<std::shared_ptr<agent::IAgentChat>> agents;
-
-    std::string current_sender_name = "AI助手";
-    std::string current_sender_avatar = "/res/C220748556D18ADBC61177B1A5A8151D.png";
-    std::string user_display_name;
-
-    void push_output(boost::json::value val)
+void ChatApp::push_output(boost::json::value val)
     {
         if (val.is_object() && !current_sender_name.empty()) {
             auto& o = val.as_object();
@@ -139,7 +99,6 @@ struct ChatApp : std::enable_shared_from_this<ChatApp>
             processNextInQueue(this);
         }
     }
-};
 
 // ---- API key ----
 
@@ -741,31 +700,6 @@ void app_free_string(char* str)
 int app_is_done(void* p)
 {
     return static_cast<ChatApp*>(p)->done ? 1 : 0;
-}
-
-// ---- Test helpers ----
-
-int app_queue_size(void* p)
-{
-    auto* app = static_cast<ChatApp*>(p);
-    return static_cast<int>(app->input_queue.size());
-}
-
-int app_streaming(void* p)
-{
-    return static_cast<ChatApp*>(p)->streaming ? 1 : 0;
-}
-
-void app_test_set_streaming(void* p, int val)
-{
-    static_cast<ChatApp*>(p)->streaming = (val != 0);
-}
-
-void app_test_drain_queue(void* p)
-{
-    auto* app = static_cast<ChatApp*>(p);
-    app->streaming = false;
-    processNextInQueue(app);
 }
 
 } // extern "C"
