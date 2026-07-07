@@ -1,7 +1,7 @@
 // filemgr.cpp — 文件管理器 C ABI 后端
 // 提供目录列表/文件读写等操作，委托给 module/core 的 VirtualFileSystem
 
-#include "app_api.hpp"
+#include "plugin.hpp"
 #include "filemgr.hpp"
 
 #include <cstdlib>

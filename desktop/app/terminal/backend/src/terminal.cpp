@@ -1,4 +1,4 @@
-#include "app_api.hpp"
+#include "plugin.hpp"
 #include "terminal.hpp"
 
 #include <cstdlib>

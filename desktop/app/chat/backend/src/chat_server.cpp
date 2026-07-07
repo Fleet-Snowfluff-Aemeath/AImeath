@@ -13,7 +13,7 @@
 #include "agent_manager.hpp"
 #include "config.hpp"
 #include "ws_server.hpp"
-#include "app_mod.hpp"
+#include "plugin_cache.hpp"
 #include "logger.hpp"
 
 namespace {
@@ -236,7 +236,6 @@ static std::string appProcessOnApp(ChatApp* app, const std::string& appName, con
 // ---- App instance management ----
 static AppInstance* ensureAppInstance(ChatApp* app, const std::string& name)
 {
-    // 如果已经有活跃 session, 不需要内部实例
     auto sess = SessionManager::instance().findSession(name, 0);
     if (sess) return nullptr;
 
@@ -245,18 +244,11 @@ static AppInstance* ensureAppInstance(ChatApp* app, const std::string& name)
         return &it->second;
     if (!app->mod_cache) return nullptr;
     try {
-        AppModule mod = app->mod_cache->load(name);
+        auto mod = app->mod_cache->load(name);
         if (!mod) return nullptr;
-        AppPtr handle = mod.create("{}");
-        if (!handle) return nullptr;
-        char* initResult = mod.app_process(handle.get(),
-            R"({"action":"new_game","width":20,"height":20})");
-        if (mod.app_free_string)
-            mod.app_free_string(initResult);
-        AppInstance inst;
-        inst.mod = mod;
-        inst.handle = std::move(handle);
-        inst.appName = name;
+        auto inst = mod.createInstance("{}");
+        if (!inst) return nullptr;
+        inst.process(R"({"action":"new_game","width":20,"height":20})");
         auto& ref = app->instances[name];
         ref = std::move(inst);
         return &app->instances[name];
@@ -297,9 +289,11 @@ static std::string executeTool(ChatApp* app, const std::string& name, const std:
             cmd["action"] = "tick";
             cmd["value"] = value;
             auto sess = SessionManager::instance().findSession(appName, instance);
-            std::string result;
-            if (sess) result = sess->call_app_process_and_notify(boost::json::serialize(cmd));
-            else app->instances.erase(appName);
+            if (!sess) {
+                app->instances.erase(appName);
+                return R"({"success":false,"msg":"no active session for )" + appName + R"(. The app may still be starting. Use list_active_windows to verify."})";
+            }
+            std::string result = sess->call_app_process_and_notify(boost::json::serialize(cmd));
             if (result.empty()) result = "[]";
             return R"({"success":true,"result":)" + result + "}";
         }
@@ -510,7 +504,7 @@ void* app_create(const char* config_json)
     auto ptr = std::make_shared<ChatApp>();
     ptr->self_holder = ptr;
 
-    ptr->mod_cache = &AppModuleCache::instance();
+    ptr->mod_cache = &PluginCache::instance();
 
     ptr->chatId = agent::AgentManager::instance().allocId();
     agent::AgentManager::instance().setChatType(ptr->chatId, agent::ChatType::GROUP);

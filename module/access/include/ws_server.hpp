@@ -23,11 +23,12 @@
 #include <boost/beast/websocket.hpp>
 #include <boost/json.hpp>
 
-#include "iface_mod.hpp"
+#include "plugin.hpp"
 #include "threadmgr.hpp"
 #include "logger.hpp"
 #include "toolbox.hpp"
 #include "timer.hpp"
+#include "eventmgr.hpp"
 
 namespace asio  = boost::asio;
 namespace beast = boost::beast;
@@ -65,12 +66,14 @@ public:
     void unregisterWindow(const std::string& windowId);
     boost::json::array listActiveWindows();
 
-    void stashApp(const std::string& windowId, AppPtr app, AppModule mod, std::string appName);
-    bool restoreApp(const std::string& windowId, AppPtr& outApp, AppModule& outMod, std::string& outAppName);
+    void stashApp(const std::string& windowId, AppInstance app, std::string appName);
+    bool restoreApp(const std::string& windowId, AppInstance& outApp, std::string& outAppName);
     void removeStashedApp(const std::string& windowId);
     void setStashTtlSec(int ttl) { stashTtlSec_ = ttl; }
 
 private:
+    void purgeDead(std::vector<std::weak_ptr<Session>>& vec);
+
     std::mutex mtx_;
     std::map<std::string, std::vector<std::weak_ptr<Session>>> sessions_;
     struct WinInfo {
@@ -80,8 +83,7 @@ private:
     std::map<std::string, WinInfo> windowMap_;
 
     struct StashedApp {
-        AppPtr app;
-        AppModule mod;
+        AppInstance app;
         std::string appName;
         std::chrono::steady_clock::time_point at;
     };
@@ -89,32 +91,19 @@ private:
     int stashTtlSec_{0};
 };
 
-class AppStateNotifier : private boost::noncopyable
+struct AppStateEvent
 {
-public:
-    static AppStateNotifier& instance();
-
-    void subscribe(void (*fn)(const char* app, const char* state, void* ctx), void* ctx)
-    {
-        fn_ = fn;
-        ctx_ = ctx;
-    }
-
-    void notify(const std::string& app, const std::string& state) const
-    {
-        if (fn_) fn_(app.c_str(), state.c_str(), ctx_);
-    }
-
-private:
-    void (*fn_)(const char*, const char*, void*) = nullptr;
-    void* ctx_ = nullptr;
+    std::string appName;
+    boost::json::value state;
 };
+
+EventBus& appEventBus();
 
 class Session : public std::enable_shared_from_this<Session>
 {
 public:
     Session(tcp::socket socket, Logger& logger,
-            IModuleCache& cache, ThreadPool* fallback_pool,
+            IPluginCache& cache, ThreadPool* fallback_pool,
             asio::io_context* io_ctx, int port);
     ~Session();
 
@@ -143,7 +132,6 @@ private:
     void do_read();
     void on_read(beast::error_code ec, std::size_t n);
     void process_legacy(const std::string& msg);
-    bool app_is_done() const;
     void close_ws();
     void do_cleanup();
     void start_ping();
@@ -155,9 +143,8 @@ private:
     http::request<http::string_body>                           req_;
 
     Logger&         logger_;
-    IModuleCache& cache_;
-    AppModule      mod_;
-    AppPtr          app_;
+    IPluginCache& cache_;
+    AppInstance     app_;
     ThreadPool*     fallback_pool_;
     asio::io_context* io_ctx_;
     asio::strand<asio::io_context::executor_type> strand_;
@@ -186,7 +173,7 @@ class Listener : public std::enable_shared_from_this<Listener>
 {
 public:
     Listener(asio::io_context& io, Logger& logger,
-             IModuleCache& cache, ThreadPool* fallback_pool,
+             IPluginCache& cache, ThreadPool* fallback_pool,
              int port = DEFAULT_PORT);
 
     int port() const { return port_; }
@@ -204,7 +191,7 @@ private:
     asio::io_context& io_;
     tcp::acceptor    acceptor_;
     Logger&          logger_;
-    IModuleCache&  cache_;
+    IPluginCache&  cache_;
     ThreadPool*      fallback_pool_;
     int              port_;
     int              max_connections_{0};

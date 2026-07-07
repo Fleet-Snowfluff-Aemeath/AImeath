@@ -9,20 +9,12 @@
 
 #include <boost/json.hpp>
 
-#include "app_api.hpp"
-#include "iface_mod.hpp"
+#include "plugin.hpp"
 #include "message_queue.hpp"
 
 namespace agent {
 class IAgentChat;
 }
-
-struct AppInstance
-{
-    AppModule mod;
-    AppPtr handle;
-    std::string appName;
-};
 
 struct ChatApp : std::enable_shared_from_this<ChatApp>
 {
@@ -42,15 +34,15 @@ struct ChatApp : std::enable_shared_from_this<ChatApp>
 
     std::shared_ptr<ChatApp> self_holder;
 
-    IModuleCache* mod_cache = nullptr;
+    IPluginCache* mod_cache = nullptr;
     std::map<std::string, AppInstance> instances;
 
     std::string chatId;
 
     std::vector<std::shared_ptr<agent::IAgentChat>> agents;
 
-    std::string current_sender_name = "AI助手";
-    std::string current_sender_avatar = "/res/C220748556D18ADBC61177B1A5A8151D.png";
+    std::string current_sender_name = "匿名";
+    std::string current_sender_avatar = " ";
     std::string user_display_name;
 
     void push_output(boost::json::value val);

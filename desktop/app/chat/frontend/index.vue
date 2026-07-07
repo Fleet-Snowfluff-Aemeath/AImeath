@@ -140,6 +140,8 @@ const msgBox = ref(null)
 
 const ch = createChannel(WS_URL, { maxRetries: -1, retryDelay: 3000, retryBackoff: 1 })
 
+ch.on('ping', () => ch.send({ type: 'pong' }))
+
 ch.onOpen(() => {
     connected.value = true
     const p = { action: 'init' }

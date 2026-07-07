@@ -7,22 +7,23 @@
 #include <boost/dll/shared_library.hpp>
 #include <boost/noncopyable.hpp>
 
-#include "app_api.hpp"
-#include <iface_mod.hpp>
+#include "plugin.hpp"
 
-class AppModuleCache : private boost::noncopyable, public IModuleCache
+class PluginCache : private boost::noncopyable, public IPluginCache
 {
 public:
-    static AppModuleCache& instance();
+    static PluginCache& instance();
 
-    AppModule load(const std::string& name) override;
+    PluginDescriptor load(const std::string& name) override;
     void evict(const std::string& name) override;
     void clear() override;
 
 private:
+    static boost::dll::shared_library tryLoad(const std::string& name);
+
     struct Entry {
         boost::dll::shared_library lib;
-        AppModule mod;
+        PluginDescriptor mod;
     };
     std::unordered_map<std::string, Entry> m_cache;
     std::mutex m_mtx;

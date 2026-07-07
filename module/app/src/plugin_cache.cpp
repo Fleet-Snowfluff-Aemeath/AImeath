@@ -1,15 +1,15 @@
-#include "app_mod.hpp"
+#include "plugin_cache.hpp"
 #include <dlfcn.h>
 #include <iostream>
 #include <boost/dll.hpp>
 
-AppModuleCache& AppModuleCache::instance()
+PluginCache& PluginCache::instance()
 {
-    static AppModuleCache cache;
+    static PluginCache cache;
     return cache;
 }
 
-static boost::dll::shared_library try_load(const std::string& name)
+boost::dll::shared_library PluginCache::tryLoad(const std::string& name)
 {
     std::string soname = "lib" + name + ".so";
 
@@ -45,33 +45,32 @@ static boost::dll::shared_library try_load(const std::string& name)
     return {};
 }
 
-AppModule AppModuleCache::load(const std::string& name)
+PluginDescriptor PluginCache::load(const std::string& name)
 {
     std::lock_guard<std::mutex> lock(m_mtx);
     auto it = m_cache.find(name);
     if (it != m_cache.end())
     {
-        it->second.mod.loaded = true;
+        it->second.mod.loaded_ = true;
         return it->second.mod;
     }
 
-    auto lib = try_load(name);
+    auto lib = tryLoad(name);
     if (!lib)
     {
         std::cerr << "failed to load lib" << name << ".so" << std::endl;
         return {};
     }
 
-    AppModule m;
-    m.loaded = true;
+    PluginDescriptor m;
+    m.loaded_ = true;
 
     try
     {
-        m.app_create      = lib.get<void*(const char*)>("app_create");
-        m.app_destroy     = lib.get<void(void*)>("app_destroy");
-        m.app_process     = lib.get<char*(void*,const char*)>("app_process");
-        m.app_free_string = lib.get<void(char*)>("app_free_string");
-        m.app_is_done     = lib.get<int(void*)>("app_is_done");
+        m.create_     = lib.get<void*(const char*)>("app_create");
+        m.destroy_    = lib.get<void(void*)>("app_destroy");
+        m.process_    = lib.get<char*(void*,const char*)>("app_process");
+        m.is_done_    = lib.get<int(void*)>("app_is_done");
     }
     catch (const boost::system::system_error& e)
     {
@@ -79,30 +78,32 @@ AppModule AppModuleCache::load(const std::string& name)
         return {};
     }
 
-    if (!m.app_create || !m.app_destroy || !m.app_process || !m.app_free_string || !m.app_is_done)
+    if (!m.create_ || !m.destroy_ || !m.process_ || !m.is_done_)
     {
         std::cerr << "required symbols not found in lib" << name << ".so" << std::endl;
         return {};
     }
 
     try {
-        m.app_on_input        = lib.get<void(void*,const char*)>("app_on_input");
-        m.app_set_output      = lib.get<void(void*,app_output_fn,void*)>("app_set_output");
-        m.app_set_io_context  = lib.get<void(void*,void*)>("app_set_io_context");
+        m.on_input_       = lib.get<void(void*,const char*)>("app_on_input");
+        m.set_output_     = lib.get<void(void*,app_output_fn,void*)>("app_set_output");
+        m.set_io_ctx_     = lib.get<void(void*,void*)>("app_set_io_context");
     } catch (...) {
     }
+
+    m.async_ = (m.on_input_ && m.set_output_);
 
     m_cache[name] = {std::move(lib), m};
     return m;
 }
 
-void AppModuleCache::evict(const std::string& name)
+void PluginCache::evict(const std::string& name)
 {
     std::lock_guard<std::mutex> lock(m_mtx);
     m_cache.erase(name);
 }
 
-void AppModuleCache::clear()
+void PluginCache::clear()
 {
     std::lock_guard<std::mutex> lock(m_mtx);
     m_cache.clear();

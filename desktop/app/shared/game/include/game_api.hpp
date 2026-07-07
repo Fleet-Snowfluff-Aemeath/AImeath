@@ -1,7 +1,7 @@
 #pragma once
 
 #include "game_base.hpp"
-#include "app_api.hpp"
+#include "plugin.hpp"
 #include <cstdlib>
 #include <cstring>
 #include <string>
@@ -17,7 +17,7 @@
 /// app_create / app_destroy / app_process / app_free_string / app_is_done
 /// C ABI on top of the Game base class (tick / isOver / score / getState).
 ///
-/// Note: includes app_api.hpp so game modules can also include this header
+/// Note: includes plugin.hpp so game modules can also include this header
 /// for the macro definition.  GAME_CLASS is checked at macro-expansion time.
 
 static std::string _gameJsonGetStr(const std::string& msg, const std::string& key)

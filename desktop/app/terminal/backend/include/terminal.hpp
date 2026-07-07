@@ -8,6 +8,6 @@
 //
 // 实现文件: src/terminal.cpp
 
-#include "app_api.hpp"
+#include "plugin.hpp"
 
 struct PtySession;

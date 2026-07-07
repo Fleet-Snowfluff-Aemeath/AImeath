@@ -23,28 +23,25 @@ AppManager& AppManager::instance()
     return mgr;
 }
 
-static void appStateNotifyBridge(const char* app, const char* state, void* ctx)
-{
-    auto* self = static_cast<AppManager*>(ctx);
-    try {
-        auto stateVal = boost::json::parse(state);
-        if (stateVal.is_object()) {
-            auto& obj = stateVal.as_object();
-            auto overIt = obj.find("over");
-            if (overIt != obj.end() && overIt->value().is_bool() && overIt->value().as_bool()) {
-                auto widIt = obj.find("window_id");
-                if (widIt != obj.end() && widIt->value().is_string())
-                    self->unregisterWindow(std::string(widIt->value().as_string()));
-            }
-        }
-        self->notifyStateChange(app, stateVal);
-    } catch (...) {}
-}
-
-void AppManager::init(IModuleCache* cache)
+void AppManager::init(IPluginCache* cache)
 {
     cache_ = cache;
-    AppStateNotifier::instance().subscribe(&appStateNotifyBridge, this);
+    appStateSub_ = appEventBus().subscribe<AppStateEvent>(
+        [this](const AppStateEvent& e) {
+            try {
+                auto& stateVal = e.state;
+                if (stateVal.is_object()) {
+                    auto& obj = stateVal.as_object();
+                    auto overIt = obj.find("over");
+                    if (overIt != obj.end() && overIt->value().is_bool() && overIt->value().as_bool()) {
+                        auto widIt = obj.find("window_id");
+                        if (widIt != obj.end() && widIt->value().is_string())
+                            unregisterWindow(std::string(widIt->value().as_string()));
+                    }
+                }
+                notifyStateChange(e.appName, stateVal);
+            } catch (...) {}
+        });
     APPMGR_LOG("info", "AppManager initialized");
 }
 

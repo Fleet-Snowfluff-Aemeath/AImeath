@@ -18,7 +18,7 @@
 #include "threadmgr.hpp"
 #include "logger.hpp"
 #include "ws_server.hpp"
-#include "app_mod.hpp"
+#include "plugin_cache.hpp"
 #include "app_manager.hpp"
 
 namespace asio  = boost::asio;
@@ -46,11 +46,11 @@ int main()
     if (max_conn > 0) {
         fallback_pool.set_max_queue_size(static_cast<size_t>(max_conn) / 10);
     }
-    AppManager::instance().init(&AppModuleCache::instance());
+    AppManager::instance().init(&PluginCache::instance());
 
     SessionManager::instance().setStashTtlSec(stash_ttl);
 
-    auto listener = std::make_shared<Listener>(io, logger, AppModuleCache::instance(), &fallback_pool, port);
+    auto listener = std::make_shared<Listener>(io, logger, PluginCache::instance(), &fallback_pool, port);
     if (max_conn > 0)
         listener->set_max_connections(max_conn);
     listener->run();

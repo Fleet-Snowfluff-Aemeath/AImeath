@@ -10,7 +10,8 @@
 #include <boost/json.hpp>
 #include <boost/noncopyable.hpp>
 
-#include "iface_mod.hpp"
+#include "plugin.hpp"
+#include "eventmgr.hpp"
 
 class Session;
 
@@ -19,7 +20,7 @@ class AppManager : private boost::noncopyable
 public:
     static AppManager& instance();
 
-    void init(IModuleCache* cache);
+    void init(IPluginCache* cache);
 
     bool openApp(const std::string& appName, const std::string& configJson);
     bool closeApp(const std::string& appName);
@@ -40,7 +41,7 @@ public:
 private:
     AppManager() = default;
 
-    IModuleCache* cache_ = nullptr;
+    IPluginCache* cache_ = nullptr;
     std::mutex mtx_;
 
     struct SubEntry {
@@ -48,4 +49,6 @@ private:
     };
     std::unordered_map<uint64_t, SubEntry> subscribers_;
     uint64_t nextSubId_ = 1;
+
+    Subscription appStateSub_;
 };

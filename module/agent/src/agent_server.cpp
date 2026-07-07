@@ -14,7 +14,7 @@
 #include "llm_utils.hpp"
 #include "config.hpp"
 #include "ws_server.hpp"
-#include "app_mod.hpp"
+#include "plugin_cache.hpp"
 #include "tool_registry.hpp"
 
 namespace asio = boost::asio;
@@ -551,15 +551,13 @@ boost::json::value AgentServer::executeTool(const std::string& name, const boost
 
         bool found = false;
         if (AppManager::instance().getAppState(appName).is_null()) {
-            auto mod = AppModuleCache::instance().load(appName);
+            auto mod = PluginCache::instance().load(appName);
             if (mod) {
-                auto handle = mod.create("{}");
-                if (handle) {
-                    char* raw = mod.app_process(handle.get(), cmdStr.c_str());
-                    if (raw) {
-                        result["result"] = boost::json::parse(raw);
-                        mod.app_free_string(raw);
-                    }
+                auto app = mod.createInstance("{}");
+                if (app) {
+                    std::string raw = app.process(cmdStr);
+                    try { result["result"] = boost::json::parse(raw); }
+                    catch (...) { result["result"] = raw; }
                     found = true;
                 }
             }
