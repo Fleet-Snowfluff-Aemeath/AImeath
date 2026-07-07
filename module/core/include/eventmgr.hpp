@@ -83,7 +83,7 @@ public:
     Subscription subscribe(std::function<void(const E&)> cb, int priority = 0)
     {
         auto& sig = getSignal<E>();
-        return Subscription(sig->connect(-priority, std::move(cb)));
+        return Subscription(sig.connect(-priority, std::move(cb)));
     }
 
     template<typename E>
@@ -146,4 +146,4 @@ private:
     std::unordered_map<std::type_index, SignalPtr> m_signals;
 };
 
-inline Executor threadPoolExecutor(ThreadPool& pool);
+Executor threadPoolExecutor(ThreadPool& pool);
