@@ -4,6 +4,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     project(chat LANGUAGES CXX)
     add_subdirectory(${PROJ_ROOT}/module/core ${CMAKE_BINARY_DIR}/core)
     add_subdirectory(${PROJ_ROOT}/module/llm ${CMAKE_BINARY_DIR}/llm)
+    add_subdirectory(${PROJ_ROOT}/module/agent ${CMAKE_BINARY_DIR}/agent)
 endif()
 
 set(CMAKE_CXX_STANDARD 17)
