@@ -1,35 +1,18 @@
 #include "chat_server.hpp"
 
 #include <iostream>
-#include <string>
-#include <vector>
-#include "message_queue.hpp"
 #include <cstdlib>
 #include <cstring>
-#include <thread>
-#include <atomic>
-#include <mutex>
-#include <map>
-#include <set>
-#include <utility>
-#include <memory>
 #include <chrono>
 #include <ctime>
 
-#include <boost/asio.hpp>
-#include <boost/json.hpp>
 #include <filesystem>
 #include <fstream>
 
 #include "agent_chat_api.hpp"
 #include "agent_manager.hpp"
 #include "llm_client.hpp"
-#include "llm_utils.hpp"
 #include "config.hpp"
-#include "ws_server.hpp"
-#include "iface_mod.hpp"
-
-namespace asio  = boost::asio;
 
 // ---- ChatApp state ----
 
@@ -99,8 +82,6 @@ void ChatApp::push_output(boost::json::value val)
             processNextInQueue(this);
         }
     }
-
-// ---- API key ----
 
 // ---- Command handling ----
 
