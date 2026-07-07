@@ -8,7 +8,7 @@ include(FetchContent)
 
 FetchContent_Declare(yaml-cpp
     GIT_REPOSITORY https://github.com/jbeder/yaml-cpp.git
-    GIT_TAG yaml-cpp-0.8.0
+    GIT_TAG yaml-cpp-0.9.0
     EXCLUDE_FROM_ALL
     SYSTEM
     OVERRIDE_FIND_PACKAGE

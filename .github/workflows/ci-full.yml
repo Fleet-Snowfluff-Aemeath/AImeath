@@ -42,6 +42,14 @@ jobs:
       - name: Setup Boost env
         run: echo "BOOST_ROOT=/usr/local/boost_1_91" >> $GITHUB_ENV
 
+      - name: Build yaml-cpp 0.9.0
+        run: |
+          git clone --depth 1 --branch yaml-cpp-0.9.0 https://github.com/jbeder/yaml-cpp.git
+          cd yaml-cpp
+          cmake -DCMAKE_BUILD_TYPE=Release -DYAML_BUILD_SHARED_LIBS=ON -B build
+          cmake --build build -j$(nproc)
+          sudo cmake --install build
+
       - name: Build Google Test
         run: |
           git clone --depth 1 --branch v1.14.0 https://github.com/google/googletest.git
