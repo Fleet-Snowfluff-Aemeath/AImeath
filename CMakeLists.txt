@@ -15,14 +15,20 @@ FetchContent_Declare(yaml-cpp
 )
 FetchContent_MakeAvailable(yaml-cpp)
 
-FetchContent_Declare(Boost
-    GIT_REPOSITORY https://github.com/boostorg/boost.git
-    GIT_TAG boost-1.91.0-1
-    SYSTEM
-    OVERRIDE_FIND_PACKAGE
-)
-set(BOOST_INCLUDE_LIBRARIES json url filesystem)
-FetchContent_MakeAvailable(Boost)
+find_package(Boost 1.91 QUIET COMPONENTS json url filesystem)
+if(Boost_FOUND)
+    message(STATUS "Using system Boost ${Boost_VERSION}")
+else()
+    message(STATUS "Boost not found, fetching from GitHub")
+    FetchContent_Declare(Boost
+        GIT_REPOSITORY https://github.com/boostorg/boost.git
+        GIT_TAG boost-1.91.0-1
+        SYSTEM
+        OVERRIDE_FIND_PACKAGE
+    )
+    set(BOOST_INCLUDE_LIBRARIES json url filesystem)
+    FetchContent_MakeAvailable(Boost)
+endif()
 
 file(GLOB MODULE_DIRS CONFIGURE_DEPENDS module/*)
 foreach(module_dir ${MODULE_DIRS})
