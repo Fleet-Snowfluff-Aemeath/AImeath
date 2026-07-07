@@ -8,14 +8,13 @@
 #include <mutex>
 #include <unordered_map>
 #include <chrono>
-#include "threadmgr.hpp"
 
 class Timer : private boost::noncopyable
 {
 public:
     using TimerId = uint64_t;
 
-    explicit Timer(ThreadPool& pool);
+    explicit Timer(boost::asio::io_context& io);
     ~Timer();
 
     TimerId setTimeout(std::chrono::milliseconds delay, std::function<void()> callback);
@@ -28,14 +27,7 @@ private:
     struct TimerEntry
     {
         std::shared_ptr<boost::asio::steady_timer> timer;
-        std::shared_ptr<void> loop_guard;
-    };
-
-    struct TimerState
-    {
-        std::mutex mtx;
-        std::unordered_map<TimerId, TimerEntry> timers;
-        ThreadPool* pool = nullptr;
+        std::shared_ptr<bool> alive;
     };
 
     TimerId addTimer(std::shared_ptr<boost::asio::steady_timer> timer);
@@ -44,6 +36,7 @@ private:
                            std::function<void()> callback);
 
     boost::asio::io_context& m_io;
-    std::shared_ptr<TimerState> m_state{std::make_shared<TimerState>()};
+    mutable std::mutex m_mtx;
+    std::unordered_map<TimerId, TimerEntry> m_timers;
     std::atomic<TimerId> m_next_id{1};
 };

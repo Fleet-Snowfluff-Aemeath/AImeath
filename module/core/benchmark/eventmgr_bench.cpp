@@ -1,15 +1,19 @@
 #include <benchmark/benchmark.h>
 #include <atomic>
+#include <vector>
 #include "eventmgr.hpp"
+#include "threadmgr.hpp"
+
+struct BE {};
 
 static void BM_EventSubscribe(benchmark::State& state)
 {
-    EventManager mgr;
+    EventBus bus;
     int N = state.range(0);
     for (auto _ : state)
     {
         for (int i = 0; i < N; ++i)
-            mgr.subscribe(100, [](const Event&) { });
+            bus.subscribe<BE>([](const BE&) { });
     }
 }
 BENCHMARK(BM_EventSubscribe)
@@ -17,26 +21,26 @@ BENCHMARK(BM_EventSubscribe)
 
 static void BM_EventFire(benchmark::State& state)
 {
-    EventManager mgr;
+    EventBus bus;
     int N = state.range(0);
     for (int i = 0; i < N; ++i)
-        mgr.subscribe(100, [](const Event&) { });
+        bus.subscribe<BE>([](const BE&) { });
     for (auto _ : state)
-        mgr.fire({100});
+        bus.fire(BE{});
 }
 BENCHMARK(BM_EventFire)
     ->Arg(1)->Arg(10)->Arg(50)->Arg(200);
 
 static void BM_EventFireAsync(benchmark::State& state)
 {
-    EventManager mgr;
+    ThreadPool pool(4);
+    EventBus bus(threadPoolExecutor(pool));
     int subs = state.range(0);
     for (int i = 0; i < subs; ++i)
-        mgr.subscribe(100, [](const Event&) { });
-    ThreadPool pool(4);
+        bus.subscribe<BE>([](const BE&) { });
     for (auto _ : state)
     {
-        mgr.fireAsync({100}, pool);
+        bus.fireAsync(BE{});
         pool.wait_all();
     }
 }
@@ -48,12 +52,10 @@ static void BM_EventSubscribeAndUnsubscribe(benchmark::State& state)
     int N = state.range(0);
     for (auto _ : state)
     {
-        EventManager mgr;
-        std::vector<EventManager::Handle> handles;
+        EventBus bus;
+        std::vector<Subscription> handles;
         for (int i = 0; i < N; ++i)
-            handles.push_back(mgr.subscribe(100, [](const Event&) { }));
-        for (auto h : handles)
-            mgr.unsubscribe(h);
+            handles.push_back(bus.subscribe<BE>([](const BE&) { }));
     }
 }
 BENCHMARK(BM_EventSubscribeAndUnsubscribe)
@@ -61,24 +63,24 @@ BENCHMARK(BM_EventSubscribeAndUnsubscribe)
 
 static void BM_EventPriorityFire(benchmark::State& state)
 {
-    EventManager mgr;
+    EventBus bus;
     int N = state.range(0);
     for (int i = 0; i < N; ++i)
-        mgr.subscribe(100, [](const Event&) { }, i % 10);
+        bus.subscribe<BE>([](const BE&) { }, i % 10);
     for (auto _ : state)
-        mgr.fire({100});
+        bus.fire(BE{});
 }
 BENCHMARK(BM_EventPriorityFire)
     ->Arg(1)->Arg(10)->Arg(50)->Arg(200);
 
 static void BM_EventSubscriberCount(benchmark::State& state)
 {
-    EventManager mgr;
+    EventBus bus;
     int N = state.range(0);
     for (int i = 0; i < N; ++i)
-        mgr.subscribe(100, [](const Event&) { });
+        bus.subscribe<BE>([](const BE&) { });
     for (auto _ : state)
-        benchmark::DoNotOptimize(mgr.subscriberCount(100));
+        benchmark::DoNotOptimize(bus.subscriberCount<BE>());
 }
 BENCHMARK(BM_EventSubscriberCount)
     ->Arg(1)->Arg(10)->Arg(100)->Arg(1000);

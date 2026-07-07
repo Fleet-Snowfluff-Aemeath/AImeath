@@ -11,6 +11,9 @@
 #include <sstream>
 #include <atomic>
 #include <memory>
+#include <chrono>
+
+#include "timer.hpp"
 
 namespace asio  = boost::asio;
 namespace beast = boost::beast;
@@ -44,7 +47,8 @@ struct LlmClient::Impl : public std::enable_shared_from_this<LlmClient::Impl>
     asio::io_context& io;
     tcp::resolver resolver_;
     std::unique_ptr<ssl::stream<beast::tcp_stream>> stream_;
-    asio::steady_timer timer_;
+    Timer timer_;
+    Timer::TimerId active_timer_id_{0};
     beast::flat_buffer buf_;
     http::response_parser<http::string_body> parser_;
     http::request<http::string_body> req_;
@@ -88,9 +92,7 @@ struct LlmClient::Impl : public std::enable_shared_from_this<LlmClient::Impl>
 
         auto self = shared_from_this();
         auto timeout_sec = timeout.count();
-        timer_.expires_after(timeout);
-        timer_.async_wait([self, timeout_sec](beast::error_code ec) {
-            if (ec == asio::error::operation_aborted || self->cancelled_) return;
+        active_timer_id_ = timer_.setTimeout(timeout, [self, timeout_sec]() {
             self->finish_error("request timeout after " +
                 std::to_string(timeout_sec) + "s");
         });
@@ -101,7 +103,7 @@ struct LlmClient::Impl : public std::enable_shared_from_this<LlmClient::Impl>
     void cancel()
     {
         cancelled_ = true;
-        timer_.cancel();
+        timer_.cancel(active_timer_id_);
         resolver_.cancel();
         try {
             if (stream_) stream_->lowest_layer().cancel();
@@ -200,9 +202,9 @@ private:
                                 ++self->retry_count_;
                                 self->reset_stream();
                                 auto self2 = self;
-                                self->timer_.expires_after(std::chrono::seconds(1));
-                                self->timer_.async_wait([self2](beast::error_code ec3) {
-                                    if (ec3 || self2->cancelled_) return;
+                                self->active_timer_id_ = self->timer_.setTimeout(
+                                    std::chrono::seconds(1), [self2]() {
+                                    if (self2->cancelled_) return;
                                     self2->do_resolve();
                                 });
                                 return;
@@ -375,7 +377,7 @@ private:
 
     void stop_timer()
     {
-        timer_.cancel();
+        timer_.cancel(active_timer_id_);
     }
 
     void finish_success()

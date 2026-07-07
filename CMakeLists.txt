@@ -43,7 +43,7 @@ endforeach()
 find_package(Threads REQUIRED)
 
 add_executable(AImeath main.cpp)
-target_link_libraries(AImeath app core Threads::Threads dl)
+target_link_libraries(AImeath app core access Threads::Threads dl)
 
 set_target_properties(AImeath PROPERTIES
     BUILD_RPATH "${CMAKE_BINARY_DIR}/output/lib"

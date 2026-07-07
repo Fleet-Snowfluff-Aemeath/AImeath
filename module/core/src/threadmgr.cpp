@@ -16,6 +16,7 @@ ThreadPool::~ThreadPool()
 
 void ThreadPool::submit(std::function<void()> func)
 {
+    if (m_stopped.load(std::memory_order_acquire)) return;
     m_pending.fetch_add(1, std::memory_order_release);
     boost::asio::post(m_io, [this, f = std::move(func)]() {
         m_pending.fetch_sub(1, std::memory_order_acquire);
@@ -54,6 +55,7 @@ size_t ThreadPool::active_count() const
 
 void ThreadPool::shutdown()
 {
+    m_stopped.store(true, std::memory_order_release);
     m_work.reset();
     for (auto& t : m_workers)
         if (t.joinable()) t.join();

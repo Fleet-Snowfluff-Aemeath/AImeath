@@ -40,7 +40,7 @@ target_include_directories(agent PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/../app/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../llm/include
 )
-target_link_libraries(agent PUBLIC Boost::json core app llm yaml-cpp::yaml-cpp)
+target_link_libraries(agent PUBLIC Boost::json core app llm access yaml-cpp::yaml-cpp)
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 find_package(GTest REQUIRED)

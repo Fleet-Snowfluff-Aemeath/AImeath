@@ -3,213 +3,227 @@
 #include <thread>
 #include <chrono>
 #include "eventmgr.hpp"
+#include "threadmgr.hpp"
 
-TEST(EventManagerTest, SubscribeAndFireSync)
+// ---- typed events ----
+struct E1 {};
+struct E2 {};
+struct EA {};
+struct EB {};
+struct ENone {};
+struct EData { int value; };
+
+// ====== Subscribe & Fire ======
+
+TEST(EventBusTest, SubscribeAndFireSync)
 {
-    EventManager mgr;
+    EventBus bus;
     std::atomic<int> count{0};
-    mgr.subscribe(100, [&](const Event&) { count.fetch_add(1); });
-    mgr.fire({100});
+    bus.subscribe<E1>([&](const E1&) { count.fetch_add(1); });
+    bus.fire(E1{});
     EXPECT_EQ(count.load(), 1);
 }
 
-TEST(EventManagerTest, MultipleSubscribers)
+TEST(EventBusTest, MultipleSubscribers)
 {
-    EventManager mgr;
+    EventBus bus;
     std::atomic<int> count{0};
-    mgr.subscribe(100, [&](const Event&) { count.fetch_add(1); });
-    mgr.subscribe(100, [&](const Event&) { count.fetch_add(1); });
-    mgr.fire({100});
+    bus.subscribe<E1>([&](const E1&) { count.fetch_add(1); });
+    bus.subscribe<E1>([&](const E1&) { count.fetch_add(1); });
+    bus.fire(E1{});
     EXPECT_EQ(count.load(), 2);
 }
 
-TEST(EventManagerTest, UnsubscribePreventsFire)
+TEST(EventBusTest, UnsubscribePreventsFire)
 {
-    EventManager mgr;
+    EventBus bus;
     std::atomic<int> count{0};
-    auto h = mgr.subscribe(100, [&](const Event&) { count.fetch_add(1); });
-    mgr.unsubscribe(h);
-    mgr.fire({100});
+    auto sub = bus.subscribe<E1>([&](const E1&) { count.fetch_add(1); });
+    sub.disconnect();
+    bus.fire(E1{});
     EXPECT_EQ(count.load(), 0);
 }
 
-TEST(EventManagerTest, AsyncFire)
+TEST(EventBusTest, AsyncFire)
 {
-    EventManager mgr;
-    std::atomic<int> count{0};
-    mgr.subscribe(100, [&](const Event&) {
-        count.fetch_add(1);
-    });
     ThreadPool pool(2);
-    mgr.fireAsync({100}, pool);
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    EventBus bus(threadPoolExecutor(pool));
+    std::atomic<int> count{0};
+    bus.subscribe<E1>([&](const E1&) { count.fetch_add(1); });
+    bus.fireAsync(E1{});
+    pool.wait_all();
     EXPECT_EQ(count.load(), 1);
 }
 
-TEST(EventManagerTest, PriorityOrder)
+TEST(EventBusTest, PriorityOrder)
 {
-    EventManager mgr;
+    EventBus bus;
     std::vector<int> order;
-    mgr.subscribe(100, [&](const Event&) { order.push_back(1); }, 0);
-    mgr.subscribe(100, [&](const Event&) { order.push_back(2); }, 10);
-    mgr.subscribe(100, [&](const Event&) { order.push_back(3); }, 5);
-    mgr.fire({100});
-    ASSERT_EQ(order.size(), 3);
+    bus.subscribe<E1>([&](const E1&) { order.push_back(1); }, 0);
+    bus.subscribe<E1>([&](const E1&) { order.push_back(2); }, 10);
+    bus.subscribe<E1>([&](const E1&) { order.push_back(3); }, 5);
+    bus.fire(E1{});
+    ASSERT_EQ(order.size(), 3u);
     EXPECT_EQ(order[0], 2);
     EXPECT_EQ(order[1], 3);
     EXPECT_EQ(order[2], 1);
 }
 
-TEST(EventManagerTest, SubscriberCount)
+TEST(EventBusTest, SubscriberCount)
 {
-    EventManager mgr;
-    EXPECT_EQ(mgr.subscriberCount(100), 0);
-    mgr.subscribe(100, [](const Event&) {});
-    mgr.subscribe(100, [](const Event&) {});
-    EXPECT_EQ(mgr.subscriberCount(100), 2);
+    EventBus bus;
+    EXPECT_EQ(bus.subscriberCount<E1>(), 0u);
+    bus.subscribe<E1>([](const E1&) {});
+    bus.subscribe<E1>([](const E1&) {});
+    EXPECT_EQ(bus.subscriberCount<E1>(), 2u);
 }
 
-TEST(EventManagerTest, FireWithNoSubscribers)
+TEST(EventBusTest, FireWithNoSubscribers)
 {
-    EventManager mgr;
-    EXPECT_NO_THROW(mgr.fire({999}));
+    EventBus bus;
+    EXPECT_NO_THROW(bus.fire(ENone{}));
 }
 
-TEST(EventManagerTest, DifferentEventTypesDontInterfere)
+TEST(EventBusTest, DifferentEventTypesDontInterfere)
 {
-    EventManager mgr;
+    EventBus bus;
     std::atomic<int> a{0}, b{0};
-    mgr.subscribe(1, [&](const Event&) { a.fetch_add(1); });
-    mgr.subscribe(2, [&](const Event&) { b.fetch_add(1); });
-    mgr.fire({1});
+    bus.subscribe<EA>([&](const EA&) { a.fetch_add(1); });
+    bus.subscribe<EB>([&](const EB&) { b.fetch_add(1); });
+    bus.fire(EA{});
     EXPECT_EQ(a.load(), 1);
     EXPECT_EQ(b.load(), 0);
-    mgr.fire({2});
+    bus.fire(EB{});
     EXPECT_EQ(a.load(), 1);
     EXPECT_EQ(b.load(), 1);
 }
 
-TEST(EventManagerTest, UnsubscribeNonExistent)
+TEST(EventBusTest, DisconnectNonExistentNoCrash)
 {
-    EventManager mgr;
-    EXPECT_NO_THROW(mgr.unsubscribe(EventManager::Handle{}));
+    Subscription sub;
+    EXPECT_NO_THROW(sub.disconnect());
 }
 
-TEST(EventManagerTest, SubscribeDuringFire)
+TEST(EventBusTest, SubscribeDuringFire)
 {
-    EventManager mgr;
+    EventBus bus;
     std::atomic<int> count{0};
-    mgr.subscribe(100, [&](const Event& e) {
-        mgr.subscribe(200, [&](const Event&) { count.fetch_add(1); });
+    bus.subscribe<E1>([&](const E1&) {
+        bus.subscribe<E2>([&](const E2&) { count.fetch_add(1); });
     });
-    mgr.fire({100});
-    mgr.fire({200});
+    bus.fire(E1{});
+    bus.fire(E2{});
     EXPECT_EQ(count.load(), 1);
 }
 
-TEST(EventManagerTest, UnsubscribeDuringFire)
+TEST(EventBusTest, UnsubscribeDuringFire)
 {
-    EventManager mgr;
-    EventManager::Handle h;
+    EventBus bus;
     std::atomic<int> count{0};
-    h = mgr.subscribe(100, [&](const Event&) {
-        mgr.unsubscribe(h);
+    Subscription sub;
+    sub = bus.subscribe<E1>([&](const E1&) {
+        sub.disconnect();
     });
-    mgr.subscribe(100, [&](const Event&) { count.fetch_add(1); });
-    mgr.fire({100});
+    bus.subscribe<E1>([&](const E1&) { count.fetch_add(1); });
+    bus.fire(E1{});
     EXPECT_EQ(count.load(), 1);
-    mgr.fire({100});
+    bus.fire(E1{});
     EXPECT_EQ(count.load(), 2);
 }
 
-TEST(EventManagerTest, NestedFire)
+TEST(EventBusTest, NestedFire)
 {
-    EventManager mgr;
+    EventBus bus;
     std::vector<int> order;
-    mgr.subscribe(100, [&](const Event&) {
+    bus.subscribe<E1>([&](const E1&) {
         order.push_back(1);
-        mgr.fire({200});
+        bus.fire(E2{});
         order.push_back(3);
     });
-    mgr.subscribe(200, [&](const Event&) { order.push_back(2); });
-    mgr.fire({100});
-    ASSERT_EQ(order.size(), 3);
+    bus.subscribe<E2>([&](const E2&) { order.push_back(2); });
+    bus.fire(E1{});
+    ASSERT_EQ(order.size(), 3u);
     EXPECT_EQ(order[0], 1);
     EXPECT_EQ(order[1], 2);
     EXPECT_EQ(order[2], 3);
 }
 
-TEST(EventManagerTest, CustomData)
+TEST(EventBusTest, CustomData)
 {
-    EventManager mgr;
+    EventBus bus;
     int value = 0;
-    mgr.subscribe(100, [&](const Event& e) {
-        if (e.data.has_value()) value = std::any_cast<int>(e.data);
-    });
-    mgr.fire({100, 42});
+    bus.subscribe<EData>([&](const EData& e) { value = e.value; });
+    bus.fire(EData{42});
     EXPECT_EQ(value, 42);
 }
 
-TEST(EventManagerTest, SubscriberCountAfterUnsubscribe)
+TEST(EventBusTest, SubscriberCountAfterUnsubscribe)
 {
-    EventManager mgr;
-    auto h = mgr.subscribe(100, [](const Event&) {});
-    mgr.subscribe(100, [](const Event&) {});
-    EXPECT_EQ(mgr.subscriberCount(100), 2);
-    mgr.unsubscribe(h);
-    EXPECT_EQ(mgr.subscriberCount(100), 1);
+    EventBus bus;
+    auto sub = bus.subscribe<E1>([](const E1&) {});
+    bus.subscribe<E1>([](const E1&) {});
+    EXPECT_EQ(bus.subscriberCount<E1>(), 2u);
+    sub.disconnect();
+    EXPECT_EQ(bus.subscriberCount<E1>(), 1u);
 }
 
-TEST(EventManagerTest, FireExceptionIsolates)
+TEST(EventBusTest, FireExceptionIsolates)
 {
-    EventManager mgr;
+    EventBus bus;
     std::vector<int> order;
-    mgr.subscribe(100, [&](const Event&) {
+    bus.subscribe<E1>([&](const E1&) {
         order.push_back(1);
         throw std::runtime_error("callback error");
     });
-    mgr.subscribe(100, [&](const Event&) {
-        order.push_back(2);
-    });
-    EXPECT_NO_THROW(mgr.fire({100}));
-    ASSERT_EQ(order.size(), 2);
+    bus.subscribe<E1>([&](const E1&) { order.push_back(2); });
+    EXPECT_NO_THROW(bus.fire(E1{}));
+    ASSERT_EQ(order.size(), 2u);
     EXPECT_EQ(order[0], 1);
     EXPECT_EQ(order[1], 2);
 }
 
-TEST(EventManagerTest, ManySubscribers)
+TEST(EventBusTest, ManySubscribers)
 {
-    EventManager mgr;
+    EventBus bus;
     std::atomic<int> count{0};
     constexpr int N = 200;
     for (int i = 0; i < N; ++i)
-        mgr.subscribe(100, [&](const Event&) { count.fetch_add(1, std::memory_order_relaxed); });
-    mgr.fire({100});
+        bus.subscribe<E1>([&](const E1&) { count.fetch_add(1, std::memory_order_relaxed); });
+    bus.fire(E1{});
     EXPECT_EQ(count.load(), N);
 }
 
-TEST(EventManagerTest, ManyEvents)
+TEST(EventBusTest, ManyEvents)
 {
-    EventManager mgr;
+    EventBus bus;
     std::atomic<int> count{0};
-    mgr.subscribe(100, [&](const Event&) { count.fetch_add(1, std::memory_order_relaxed); });
+    bus.subscribe<E1>([&](const E1&) { count.fetch_add(1, std::memory_order_relaxed); });
     constexpr int N = 1000;
     for (int i = 0; i < N; ++i)
-        mgr.fire({100});
+        bus.fire(E1{});
     EXPECT_EQ(count.load(), N);
 }
 
-TEST(EventManagerTest, ConcurrentFireAsync)
+TEST(EventBusTest, ConcurrentFireAsync)
 {
-    EventManager mgr;
-    std::atomic<int> count{0};
-    mgr.subscribe(100, [&](const Event&) {
-        count.fetch_add(1, std::memory_order_relaxed);
-    });
     ThreadPool pool(4);
+    EventBus bus(threadPoolExecutor(pool));
+    std::atomic<int> count{0};
+    bus.subscribe<E1>([&](const E1&) { count.fetch_add(1, std::memory_order_relaxed); });
     constexpr int N = 200;
     for (int i = 0; i < N; ++i)
-        mgr.fireAsync({100}, pool);
+        bus.fireAsync(E1{});
     pool.wait_all();
     EXPECT_EQ(count.load(), N);
+}
+
+TEST(EventBusTest, SubscriptionRaii)
+{
+    EventBus bus;
+    std::atomic<int> count{0};
+    {
+        auto sub = bus.subscribe<E1>([&](const E1&) { count.fetch_add(1); });
+    }
+    bus.fire(E1{});
+    EXPECT_EQ(count.load(), 0);
 }

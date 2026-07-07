@@ -7,6 +7,7 @@
 #include <memory>
 #include <atomic>
 #include <mutex>
+#include <chrono>
 #include <boost/noncopyable.hpp>
 
 class Logger : private boost::noncopyable
@@ -72,15 +73,23 @@ public:
     };
 
     LogStream log(Level level);
-    LogStream debug() { return log(DEBUG); }
-    LogStream info()  { return log(INFO); }
-    LogStream warn()  { return log(WARN); }
-    LogStream error() { return log(ERROR); }
+    LogStream log(Level level, const std::string& tag);
+
+    LogStream debug()              { return log(DEBUG); }
+    LogStream info()               { return log(INFO); }
+    LogStream warn()               { return log(WARN); }
+    LogStream error()              { return log(ERROR); }
+
+    LogStream debug(const std::string& tag) { return log(DEBUG, tag); }
+    LogStream info(const std::string& tag)  { return log(INFO,  tag); }
+    LogStream warn(const std::string& tag)  { return log(WARN,  tag); }
+    LogStream error(const std::string& tag) { return log(ERROR, tag); }
 
 private:
-    static const std::string& timestamp();
+    static std::string timestamp();
     static const char* levelName(Level level);
     static std::string formatPrefix(Level level);
+    static std::string formatPrefix(Level level, const std::string& tag);
 
     std::ostream* m_os;
     std::atomic<Level> m_level;

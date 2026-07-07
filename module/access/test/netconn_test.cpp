@@ -1,12 +1,12 @@
 #include <gtest/gtest.h>
 #include "netconn.hpp"
-#include "wsutil.hpp"
+#include "toolbox.hpp"
 #include "threadmgr.hpp"
 #include "logger.hpp"
 
 // ====== URL Parsing ======
 
-TEST(WsUtilTest, ParseHttpUrl)
+TEST(ToolboxTest, ParseHttpUrl)
 {
     auto url = parseUrl("http://example.com/path");
     EXPECT_EQ(url.host, "example.com");
@@ -15,7 +15,7 @@ TEST(WsUtilTest, ParseHttpUrl)
     EXPECT_FALSE(url.is_ws);
 }
 
-TEST(WsUtilTest, ParseHttpUrlDefaultPath)
+TEST(ToolboxTest, ParseHttpUrlDefaultPath)
 {
     auto url = parseUrl("http://example.com");
     EXPECT_EQ(url.host, "example.com");
@@ -23,7 +23,7 @@ TEST(WsUtilTest, ParseHttpUrlDefaultPath)
     EXPECT_EQ(url.path, "/");
 }
 
-TEST(WsUtilTest, ParseHttpUrlCustomPort)
+TEST(ToolboxTest, ParseHttpUrlCustomPort)
 {
     auto url = parseUrl("http://example.com:8080/api");
     EXPECT_EQ(url.host, "example.com");
@@ -31,7 +31,7 @@ TEST(WsUtilTest, ParseHttpUrlCustomPort)
     EXPECT_EQ(url.path, "/api");
 }
 
-TEST(WsUtilTest, ParseWsUrl)
+TEST(ToolboxTest, ParseWsUrl)
 {
     auto url = parseUrl("ws://chat.example.com/room");
     EXPECT_EQ(url.host, "chat.example.com");
@@ -40,7 +40,7 @@ TEST(WsUtilTest, ParseWsUrl)
     EXPECT_TRUE(url.is_ws);
 }
 
-TEST(WsUtilTest, ParseHttpsUrl)
+TEST(ToolboxTest, ParseHttpsUrl)
 {
     auto url = parseUrl("https://secure.com/api/v1");
     EXPECT_EQ(url.host, "secure.com");
@@ -48,7 +48,7 @@ TEST(WsUtilTest, ParseHttpsUrl)
     EXPECT_EQ(url.path, "/api/v1");
 }
 
-TEST(WsUtilTest, ParseWssUrl)
+TEST(ToolboxTest, ParseWssUrl)
 {
     auto url = parseUrl("wss://secure.com/chat");
     EXPECT_EQ(url.host, "secure.com");
@@ -57,13 +57,13 @@ TEST(WsUtilTest, ParseWssUrl)
     EXPECT_TRUE(url.is_ws);
 }
 
-TEST(WsUtilTest, ParseInvalidUrl)
+TEST(ToolboxTest, ParseInvalidUrl)
 {
     auto url = parseUrl("not-a-url");
     EXPECT_TRUE(url.host.empty());
 }
 
-TEST(WsUtilTest, ParseWssUrlCustomPort)
+TEST(ToolboxTest, ParseWssUrlCustomPort)
 {
     auto url = parseUrl("wss://secure.com:9443/chat");
     EXPECT_EQ(url.host, "secure.com");
@@ -72,7 +72,7 @@ TEST(WsUtilTest, ParseWssUrlCustomPort)
     EXPECT_TRUE(url.is_ws);
 }
 
-TEST(WsUtilTest, ParseWssUrlDefaultPath)
+TEST(ToolboxTest, ParseWssUrlDefaultPath)
 {
     auto url = parseUrl("wss://secure.com");
     EXPECT_EQ(url.host, "secure.com");
@@ -81,7 +81,7 @@ TEST(WsUtilTest, ParseWssUrlDefaultPath)
     EXPECT_TRUE(url.is_ws);
 }
 
-TEST(WsUtilTest, ParseWsUrlCustomPort)
+TEST(ToolboxTest, ParseWsUrlCustomPort)
 {
     auto url = parseUrl("ws://chat.example.com:1234/room");
     EXPECT_EQ(url.host, "chat.example.com");
@@ -90,21 +90,21 @@ TEST(WsUtilTest, ParseWsUrlCustomPort)
     EXPECT_TRUE(url.is_ws);
 }
 
-TEST(WsUtilTest, JsonError)
+TEST(ToolboxTest, JsonError)
 {
     std::string e = jsonError("test error");
     EXPECT_NE(e.find("error"), std::string::npos);
     EXPECT_NE(e.find("test error"), std::string::npos);
 }
 
-TEST(WsUtilTest, JsonOk)
+TEST(ToolboxTest, JsonOk)
 {
     EXPECT_EQ(jsonOk(), "{\"type\":\"ok\"}");
 }
 
 // ====== JSON parse ======
 
-TEST(WsUtilTest, JsonParseStr)
+TEST(ToolboxTest, JsonParseStr)
 {
     std::string msg = R"({"action":"new_game","game":"snake","width":20})";
     EXPECT_EQ(jsonParseStr(msg, "action"), "new_game");
@@ -113,7 +113,7 @@ TEST(WsUtilTest, JsonParseStr)
     EXPECT_TRUE(jsonParseStr(msg, "missing").empty());
 }
 
-TEST(WsUtilTest, JsonParseInt)
+TEST(ToolboxTest, JsonParseInt)
 {
     std::string msg = R"({"width":20,"height":15})";
     EXPECT_EQ(jsonParseInt(msg, "width"), 20);
@@ -121,29 +121,30 @@ TEST(WsUtilTest, JsonParseInt)
     EXPECT_EQ(jsonParseInt(msg, "missing"), 0);
 }
 
-TEST(WsUtilTest, JsonParseStrWithEscape)
+TEST(ToolboxTest, JsonParseStrWithEscape)
 {
     std::string msg = R"({"msg":"hello\"world"})";
     EXPECT_EQ(jsonParseStr(msg, "msg"), "hello\"world");
 }
 
-// ====== Async HTTP (error paths) ======
+// ====== HttpClient ======
 
-TEST(NetConnTest, HttpGetAsyncInvalidUrl)
+TEST(HttpClientTest, GetAsyncInvalidUrl)
 {
     ThreadPool pool(2);
-    NetConn conn(pool);
+    HttpClient client(pool);
 
     std::atomic<bool> got_error{false};
     std::string error_msg;
 
-    conn.httpGetAsync("not-a-url",
+    client.getAsync("not-a-url", {
         []() {},
         [](const std::string&, bool) {},
         [&](const std::string& msg) {
             error_msg = msg;
             got_error.store(true);
-        });
+        }
+    });
 
     for (int i = 0; i < 50; ++i)
     {
@@ -155,19 +156,18 @@ TEST(NetConnTest, HttpGetAsyncInvalidUrl)
     EXPECT_NE(error_msg.find("invalid URL"), std::string::npos);
 }
 
-TEST(NetConnTest, HttpPostAsyncInvalidUrl)
+TEST(HttpClientTest, PostAsyncInvalidUrl)
 {
     ThreadPool pool(2);
-    NetConn conn(pool);
+    HttpClient client(pool);
 
     std::atomic<bool> got_error{false};
 
-    conn.httpPostAsync("not-a-url", "body", "text/plain",
+    client.postAsync("not-a-url", "body", "text/plain", {
         []() {},
         [](const std::string&, bool) {},
-        [&](const std::string&) {
-            got_error.store(true);
-        });
+        [&](const std::string&) { got_error.store(true); }
+    });
 
     for (int i = 0; i < 50; ++i)
     {
@@ -178,29 +178,26 @@ TEST(NetConnTest, HttpPostAsyncInvalidUrl)
     EXPECT_TRUE(got_error.load());
 }
 
-// ====== State Management ======
-
-TEST(NetConnTest, InitialState)
+TEST(HttpClientTest, InitialState)
 {
     ThreadPool pool(2);
-    NetConn conn(pool);
-    EXPECT_EQ(conn.state(), NetConn::State::CLOSED);
+    HttpClient client(pool);
+    EXPECT_EQ(client.state(), ConnState::CLOSED);
 }
 
-TEST(NetConnTest, SetConnectTimeout)
+TEST(HttpClientTest, SetTimeout)
 {
     ThreadPool pool(2);
-    NetConn conn(pool);
-    conn.setConnectTimeout(std::chrono::milliseconds(1000));
-    EXPECT_EQ(conn.state(), NetConn::State::CLOSED);
+    HttpClient client(pool);
+    client.withTimeout(std::chrono::milliseconds(1000));
+    EXPECT_EQ(client.state(), ConnState::CLOSED);
 }
 
-// ====== ThreadPool + Logger reuse ======
-
-TEST(NetConnTest, ConstructWithLogger)
+TEST(HttpClientTest, ConstructWithLogger)
 {
     ThreadPool pool(2);
     Logger logger(Logger::DEBUG);
-    NetConn conn(pool, &logger);
-    EXPECT_EQ(conn.state(), NetConn::State::CLOSED);
+    HttpClient client(pool);
+    client.withLogger(&logger);
+    EXPECT_EQ(client.state(), ConnState::CLOSED);
 }

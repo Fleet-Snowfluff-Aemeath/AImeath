@@ -10,7 +10,7 @@ static void BM_TimerSetTimeout(benchmark::State& state)
     int N = state.range(0);
     for (auto _ : state)
     {
-        Timer timer(pool);
+        Timer timer(pool.io_context());
         for (int i = 0; i < N; ++i)
             timer.setTimeout(std::chrono::milliseconds(100), []() { });
     }
@@ -23,7 +23,7 @@ static void BM_TimerSetTimeoutAt(benchmark::State& state)
     int N = state.range(0);
     for (auto _ : state)
     {
-        Timer timer(pool);
+        Timer timer(pool.io_context());
         auto base = std::chrono::steady_clock::now();
         for (int i = 0; i < N; ++i)
             timer.setTimeoutAt(base + std::chrono::milliseconds(100 + i), []() { });
@@ -37,7 +37,7 @@ static void BM_TimerSetAndCancel(benchmark::State& state)
     int N = state.range(0);
     for (auto _ : state)
     {
-        Timer timer(pool);
+        Timer timer(pool.io_context());
         std::vector<uint64_t> ids;
         for (int i = 0; i < N; ++i)
             ids.push_back(timer.setTimeout(
@@ -56,7 +56,7 @@ static void BM_TimerFire(benchmark::State& state)
     for (auto _ : state)
     {
         count.store(0);
-        Timer timer(pool);
+        Timer timer(pool.io_context());
         for (int i = 0; i < N; ++i)
             timer.setTimeout(std::chrono::milliseconds(5), [&]() {
                 count.fetch_add(1, std::memory_order_relaxed);
@@ -72,7 +72,7 @@ static void BM_TimerSetInterval(benchmark::State& state)
     ThreadPool pool(2);
     for (auto _ : state)
     {
-        Timer timer(pool);
+        Timer timer(pool.io_context());
         std::atomic<int> count{0};
         auto id = timer.setInterval(std::chrono::milliseconds(2), [&]() {
             count.fetch_add(1);
@@ -87,7 +87,7 @@ BENCHMARK(BM_TimerSetInterval)->Arg(5)->Arg(20);
 static void BM_TimerExists(benchmark::State& state)
 {
     ThreadPool pool(2);
-    Timer timer(pool);
+    Timer timer(pool.io_context());
     int N = state.range(0);
     std::vector<uint64_t> ids;
     for (int i = 0; i < N; ++i)

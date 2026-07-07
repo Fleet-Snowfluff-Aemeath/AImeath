@@ -17,7 +17,7 @@ file(GLOB SRC_SOURCES CONFIGURE_DEPENDS
 )
 add_library(app SHARED ${SRC_SOURCES})
 target_include_directories(app PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include ${CMAKE_CURRENT_SOURCE_DIR}/../core/include)
-target_link_libraries(app PUBLIC Boost::json Boost::filesystem dl core)
+target_link_libraries(app PUBLIC Boost::json Boost::filesystem dl core access)
 
 # 功能测试 && 性能测试
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)

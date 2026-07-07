@@ -33,6 +33,7 @@ private:
 
     std::atomic<size_t> m_active{0};
     std::atomic<size_t> m_pending{0};
+    std::atomic<bool> m_stopped{false};
     size_t m_max_queue{0};
 
     mutable std::mutex m_mtx;

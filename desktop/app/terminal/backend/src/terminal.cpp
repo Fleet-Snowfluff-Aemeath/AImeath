@@ -22,20 +22,6 @@ static char* makeReply(const json::array& arr)
     return buf;
 }
 
-// Terminal 专用的输出包装: 将纯文本格式化为 {"type":"output","text":"..."}
-static void terminalOutputWrap(void* udata, const char* text)
-{
-    auto* ses = static_cast<PtySession*>(udata);
-    json::object msg;
-    msg["type"] = "output";
-    msg["text"] = text;
-    std::string s = json::serialize(msg);
-    // 通过 PtySession 的内部 callback 发送 — 需要使用 setOutput 注册的原始回调
-    // 由于 pushOutput 现在传递纯文本，terminal 层需要通过 app_set_output 直接设置回调
-    // 这里通过 PtySession 的 setOutput 设置一个中间层来格式化
-}
-
-// 实际方案: terminal 持有自己的 output_cb，在 PtySession 回调中格式化后发送
 struct TerminalState
 {
     std::unique_ptr<PtySession> session;
@@ -171,13 +157,9 @@ void app_set_output(void* p, app_output_fn cb, void* userdata)
     state->output_cb = cb;
     state->output_udata = userdata;
 
-    // 注册 PtySession 的回调: 纯文本 → terminalOutputWrap → JSON → output_cb
-    state->session->setOutput(
-        [](void* udata, const char* text) {
-            auto* s = static_cast<TerminalState*>(udata);
-            s->pushOutput(text);
-        },
-        state);
+    state->session->setOutput([state](const std::string& text) {
+        state->pushOutput(text);
+    });
 }
 
 char* app_process(void* p, const char* input_json)
