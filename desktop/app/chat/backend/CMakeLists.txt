@@ -5,6 +5,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     add_subdirectory(${PROJ_ROOT}/module/core ${CMAKE_BINARY_DIR}/core)
     add_subdirectory(${PROJ_ROOT}/module/llm ${CMAKE_BINARY_DIR}/llm)
     add_subdirectory(${PROJ_ROOT}/module/agent ${CMAKE_BINARY_DIR}/agent)
+    add_subdirectory(${PROJ_ROOT}/module/app ${CMAKE_BINARY_DIR}/app)
 endif()
 
 set(CMAKE_CXX_STANDARD 17)
@@ -38,10 +39,12 @@ file(GLOB TEST_SOURCES CONFIGURE_DEPENDS
 )
 add_executable(tests ${TEST_SOURCES})
 set_target_properties(tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output/test)
-target_link_libraries(tests chat GTest::GTest GTest::Main)
+target_link_libraries(tests chat GTest::GTest GTest::Main Boost::json)
 target_include_directories(tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${PROJ_ROOT}/module/app/include
+    ${PROJ_ROOT}/module/core/include
+    ${Boost_INCLUDE_DIRS}
 )
 add_custom_target(run_tests
     COMMAND ${CMAKE_COMMAND} -E env LD_LIBRARY_PATH=${CMAKE_BINARY_DIR}/output/lib $<TARGET_FILE:tests>
@@ -56,6 +59,7 @@ function(add_benchmark target src)
     target_include_directories(${target} PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${PROJ_ROOT}/module/app/include
+        ${PROJ_ROOT}/module/core/include
         ${Boost_INCLUDE_DIRS}
     )
 endfunction()
