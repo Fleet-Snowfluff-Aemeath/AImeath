@@ -11,7 +11,6 @@
 
 #include "agent_chat_api.hpp"
 #include "agent_manager.hpp"
-#include "llm_client.hpp"
 #include "config.hpp"
 
 // ---- ChatApp state ----
@@ -548,9 +547,6 @@ void app_destroy(void* p)
         app->output_cb = nullptr;
         app->output_udata = nullptr;
     }
-    if (app->current_stream)
-        app->current_stream->cancel();
-    app->current_stream.reset();
     app->instances.clear();
     app->self_holder.reset();
 }
@@ -588,8 +584,6 @@ void app_on_input(void* p, const char* input_json)
             if (action == "stop") {
                 CHAT_LOG("[chat-in]", "stop request");
                 app->cancelled = true;
-                if (app->current_stream)
-                    app->current_stream->cancel();
                 app->streaming = false;
                 app->input_queue.clear();
                 boost::json::object end;

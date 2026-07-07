@@ -13,8 +13,6 @@
 #include "iface_mod.hpp"
 #include "message_queue.hpp"
 
-class LlmClient;
-
 namespace agent {
 class IAgentChat;
 }
@@ -40,7 +38,6 @@ struct ChatApp : std::enable_shared_from_this<ChatApp>
     void* output_udata = nullptr;
     void* io_ctx_ptr = nullptr;
 
-    std::shared_ptr<LlmClient> current_stream;
     bool done = false;
 
     std::shared_ptr<ChatApp> self_holder;
