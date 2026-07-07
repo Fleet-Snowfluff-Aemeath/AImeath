@@ -6,14 +6,20 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 include(FetchContent)
 
-FetchContent_Declare(yaml-cpp
-    GIT_REPOSITORY https://github.com/jbeder/yaml-cpp.git
-    GIT_TAG yaml-cpp-0.8.0
-    EXCLUDE_FROM_ALL
-    SYSTEM
-    OVERRIDE_FIND_PACKAGE
-)
-FetchContent_MakeAvailable(yaml-cpp)
+find_package(yaml-cpp QUIET)
+if(yaml-cpp_FOUND)
+    message(STATUS "Using system yaml-cpp")
+else()
+    message(STATUS "yaml-cpp not found, fetching from GitHub")
+    FetchContent_Declare(yaml-cpp
+        GIT_REPOSITORY https://github.com/jbeder/yaml-cpp.git
+        GIT_TAG yaml-cpp-0.8.0
+        EXCLUDE_FROM_ALL
+        SYSTEM
+        OVERRIDE_FIND_PACKAGE
+    )
+    FetchContent_MakeAvailable(yaml-cpp)
+endif()
 
 find_package(Boost 1.91 QUIET COMPONENTS json url filesystem)
 if(Boost_FOUND)
