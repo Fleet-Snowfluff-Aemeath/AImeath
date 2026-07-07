@@ -20,16 +20,16 @@ TEST(ConfigTest, GetStringUsesDefault)
     EXPECT_EQ(cfg.getString("__nonexistent_key__", "fallback"), "fallback");
 }
 
-// ====== SessionRegistry (limited â€” full Session needs WS upgrade) ======
+// ====== SessionManager (limited â€?full Session needs WS upgrade) ======
 
-class SessionRegistryTest : public ::testing::Test
+class SessionManagerTest : public ::testing::Test
 {
 protected:
     asio::io_context io;
     Logger logger = Logger(Logger::WARN);
     AppModuleCache cache;
     ThreadPool fallback{1};
-    SessionRegistry& reg = Config::instance().sessionRegistry();
+    SessionManager& reg = SessionManager::instance();
 
     std::shared_ptr<Session> createSession(const std::string& wid = "")
     {
@@ -49,40 +49,40 @@ protected:
     void TearDown() override {}
 };
 
-TEST_F(SessionRegistryTest, FindNonExistentReturnsNull)
+TEST_F(SessionManagerTest, FindNonExistentReturnsNull)
 {
     EXPECT_EQ(reg.findSession("__nonexistent__", 0), nullptr);
 }
 
-TEST_F(SessionRegistryTest, FindAllSessionsNonExistent)
+TEST_F(SessionManagerTest, FindAllSessionsNonExistent)
 {
     EXPECT_TRUE(reg.findAllSessions("__nonexistent__").empty());
 }
 
-TEST_F(SessionRegistryTest, RegisterAndUnregisterSession)
+TEST_F(SessionManagerTest, RegisterAndUnregisterSession)
 {
     auto sess = createSession("win_a");
     std::string sid = sess->session_id();
     reg.registerSession("test_app", sess);
-    // unregister and verify no crash â€” actual find requires is_open() which needs WS upgrade
+    // unregister and verify no crash â€?actual find requires is_open() which needs WS upgrade
     reg.unregisterSession("test_app", sess.get());
     reg.unregisterWindow("win_a");
 }
 
-TEST_F(SessionRegistryTest, RegisterAndUnregisterWindow)
+TEST_F(SessionManagerTest, RegisterAndUnregisterWindow)
 {
     auto sess = createSession("win_b");
     reg.registerWindow("win_b", sess->session_id(), "test_app");
     reg.unregisterWindow("win_b");
 }
 
-TEST_F(SessionRegistryTest, ListActiveWindowsOnEmpty)
+TEST_F(SessionManagerTest, ListActiveWindowsOnEmpty)
 {
     auto windows = reg.listActiveWindows();
     EXPECT_TRUE(windows.empty());
 }
 
-TEST_F(SessionRegistryTest, MultipleUnregisterDoesNotCrash)
+TEST_F(SessionManagerTest, MultipleUnregisterDoesNotCrash)
 {
     auto sess = createSession();
     reg.registerSession("multi", sess);
@@ -90,7 +90,7 @@ TEST_F(SessionRegistryTest, MultipleUnregisterDoesNotCrash)
     reg.unregisterSession("multi", sess.get());
 }
 
-TEST_F(SessionRegistryTest, ListSessionsInitiallyEmpty)
+TEST_F(SessionManagerTest, ListSessionsInitiallyEmpty)
 {
     EXPECT_TRUE(reg.listSessions().empty());
 }

@@ -9,6 +9,9 @@
 
 #include <string>
 #include <memory>
+#include <map>
+#include <vector>
+#include <mutex>
 #include <deque>
 #include <optional>
 #include <atomic>
@@ -43,6 +46,47 @@ namespace key {
 namespace appname {
     constexpr auto CHAT  = "chat";
 }
+
+class Session;
+
+class SessionManager : private boost::noncopyable
+{
+public:
+    static SessionManager& instance();
+
+    void registerSession(const std::string& appName, std::weak_ptr<Session> session);
+    std::shared_ptr<Session> findSession(const std::string& appName, int index = 0);
+    std::vector<std::shared_ptr<Session>> findAllSessions(const std::string& appName);
+    void unregisterSession(const std::string& appName, Session* ptr);
+    std::vector<std::pair<std::string, int>> listSessions();
+
+    void registerWindow(const std::string& windowId, const std::string& sessionId, const std::string& appName);
+    void unregisterWindow(const std::string& windowId);
+    boost::json::array listActiveWindows();
+
+    void stashApp(const std::string& windowId, AppPtr app, AppModule mod, std::string appName);
+    bool restoreApp(const std::string& windowId, AppPtr& outApp, AppModule& outMod, std::string& outAppName);
+    void removeStashedApp(const std::string& windowId);
+    void setStashTtlSec(int ttl) { stashTtlSec_ = ttl; }
+
+private:
+    std::mutex mtx_;
+    std::map<std::string, std::vector<std::weak_ptr<Session>>> sessions_;
+    struct WinInfo {
+        std::string sessionId;
+        std::string appName;
+    };
+    std::map<std::string, WinInfo> windowMap_;
+
+    struct StashedApp {
+        AppPtr app;
+        AppModule mod;
+        std::string appName;
+        std::chrono::steady_clock::time_point at;
+    };
+    std::map<std::string, StashedApp> stashedApps_;
+    int stashTtlSec_{0};
+};
 
 class Session : public std::enable_shared_from_this<Session>
 {

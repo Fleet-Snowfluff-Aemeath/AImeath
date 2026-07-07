@@ -67,8 +67,8 @@
 
 ### config_test.cpp（13 个测试）
 - Config::getInt/getString 默认值
-- SessionRegistry 注册/查找/全部查找/注销
-- SessionRegistry 窗口管理（registerWindow/unregisterWindow/listActiveWindows）
+- SessionManager 注册/查找/全部查找/注销
+- SessionManager 窗口管理（registerWindow/unregisterWindow/listActiveWindows）
 - 多应用类型共存
 - 越界/不存在查询返回 null
 

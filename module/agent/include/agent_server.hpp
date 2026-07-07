@@ -47,6 +47,15 @@ public:
     bool closeApp(const std::string& name) override;
     void stop() override;
 
+    bool chatSend(const std::string& text) override;
+    bool fileList(const std::string& path) override;
+    bool fileRead(const std::string& path) override;
+    bool fileWrite(const std::string& path, const std::string& content) override;
+    bool fileMkdir(const std::string& path) override;
+    bool fileRemove(const std::string& path) override;
+    bool terminalExec(const std::string& command) override;
+    bool terminalStdin(const std::string& data) override;
+
     std::shared_ptr<AgentServer> selfHolder_;
 
 private:

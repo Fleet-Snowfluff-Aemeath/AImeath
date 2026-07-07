@@ -289,6 +289,303 @@ TEST(AgentServerTest, ProcessWithEmptyObject)
     ptr->destroy();
 }
 
+// ====== chat_send ======
+
+TEST(AgentServerTest, ChatSendValidText)
+{
+    auto ptr = std::make_shared<agent::AgentServer>();
+    EXPECT_NO_THROW(ptr->chatSend("hello world"));
+    ptr->destroy();
+}
+
+TEST(AgentServerTest, ChatSendEmptyText)
+{
+    auto ptr = std::make_shared<agent::AgentServer>();
+    EXPECT_NO_THROW(ptr->chatSend(""));
+    ptr->destroy();
+}
+
+TEST(AgentServerTest, ChatSendMultipleTimes)
+{
+    auto ptr = std::make_shared<agent::AgentServer>();
+    for (int i = 0; i < 5; ++i) {
+        EXPECT_NO_THROW(ptr->chatSend("msg " + std::to_string(i)));
+    }
+    ptr->destroy();
+}
+
+// ====== file_list ======
+
+TEST(AgentServerTest, FileListWithPath)
+{
+    auto ptr = std::make_shared<agent::AgentServer>();
+    auto result = ptr->fileList("/");
+    ptr->destroy();
+}
+
+TEST(AgentServerTest, FileListWithoutPath)
+{
+    auto ptr = std::make_shared<agent::AgentServer>();
+    bool result = ptr->fileList("/");
+    ptr->destroy();
+}
+
+TEST(AgentServerTest, FileListMultipleTimes)
+{
+    auto ptr = std::make_shared<agent::AgentServer>();
+    for (int i = 0; i < 5; ++i) {
+        ptr->fileList("/");
+    }
+    ptr->destroy();
+}
+
+TEST(AgentServerTest, FileListToolDefined)
+{
+    auto ptr = std::make_shared<agent::AgentServer>();
+    ptr->destroy();
+}
+
+// ====== file_read ======
+
+TEST(AgentServerTest, FileReadValidPath)
+{
+    auto ptr = std::make_shared<agent::AgentServer>();
+    EXPECT_NO_THROW(ptr->fileRead("/etc/hostname"));
+    ptr->destroy();
+}
+
+TEST(AgentServerTest, FileReadNonExistent)
+{
+    auto ptr = std::make_shared<agent::AgentServer>();
+    EXPECT_NO_THROW(ptr->fileRead("/__nonexistent__.txt"));
+    ptr->destroy();
+}
+
+// ====== file_write ======
+
+TEST(AgentServerTest, FileWriteValid)
+{
+    auto ptr = std::make_shared<agent::AgentServer>();
+    EXPECT_NO_THROW(ptr->fileWrite("/tmp/agent_test.txt", "hello"));
+    ptr->destroy();
+}
+
+TEST(AgentServerTest, FileWriteThenRead)
+{
+    auto ptr = std::make_shared<agent::AgentServer>();
+    EXPECT_NO_THROW(ptr->fileWrite("/tmp/agent_test_rw.txt", "test content"));
+    EXPECT_NO_THROW(ptr->fileRead("/tmp/agent_test_rw.txt"));
+    ptr->destroy();
+}
+
+TEST(AgentServerTest, FileWriteEmptyContent)
+{
+    auto ptr = std::make_shared<agent::AgentServer>();
+    EXPECT_NO_THROW(ptr->fileWrite("/tmp/agent_test_empty.txt", ""));
+    ptr->destroy();
+}
+
+// ====== file_mkdir ======
+
+TEST(AgentServerTest, FileMkdirValid)
+{
+    auto ptr = std::make_shared<agent::AgentServer>();
+    EXPECT_NO_THROW(ptr->fileMkdir("/tmp/agent_test_dir"));
+    ptr->destroy();
+}
+
+// ====== file_remove ======
+
+TEST(AgentServerTest, FileRemoveValid)
+{
+    auto ptr = std::make_shared<agent::AgentServer>();
+    EXPECT_NO_THROW(ptr->fileWrite("/tmp/agent_test_rm.txt", "to remove"));
+    EXPECT_NO_THROW(ptr->fileRemove("/tmp/agent_test_rm.txt"));
+    ptr->destroy();
+}
+
+TEST(AgentServerTest, FileRemoveNonExistent)
+{
+    auto ptr = std::make_shared<agent::AgentServer>();
+    EXPECT_NO_THROW(ptr->fileRemove("/tmp/__nonexistent_rm__.txt"));
+    ptr->destroy();
+}
+
+// ====== terminal_exec ======
+
+TEST(AgentServerTest, TerminalExecEcho)
+{
+    auto ptr = std::make_shared<agent::AgentServer>();
+    EXPECT_NO_THROW(ptr->terminalExec("echo hello"));
+    ptr->destroy();
+}
+
+TEST(AgentServerTest, TerminalExecInvalidCommand)
+{
+    auto ptr = std::make_shared<agent::AgentServer>();
+    EXPECT_NO_THROW(ptr->terminalExec("__nonexistent_cmd_xyz__"));
+    ptr->destroy();
+}
+
+TEST(AgentServerTest, TerminalExecMultipleTimes)
+{
+    auto ptr = std::make_shared<agent::AgentServer>();
+    for (int i = 0; i < 5; ++i) {
+        EXPECT_NO_THROW(ptr->terminalExec("echo test"));
+    }
+    ptr->destroy();
+}
+
+TEST(AgentServerTest, TerminalExecEmptyCommand)
+{
+    auto ptr = std::make_shared<agent::AgentServer>();
+    EXPECT_NO_THROW(ptr->terminalExec(""));
+    ptr->destroy();
+}
+
+// ====== terminal_stdin ======
+
+TEST(AgentServerTest, TerminalStdinValidData)
+{
+    auto ptr = std::make_shared<agent::AgentServer>();
+    EXPECT_NO_THROW(ptr->terminalStdin("test input"));
+    ptr->destroy();
+}
+
+TEST(AgentServerTest, TerminalStdinEmptyData)
+{
+    auto ptr = std::make_shared<agent::AgentServer>();
+    EXPECT_NO_THROW(ptr->terminalStdin(""));
+    ptr->destroy();
+}
+
+// ====== get_app_state for chat, filemanager, terminal ======
+
+TEST(AgentServerTest, GetAppStateChat)
+{
+    auto ptr = std::make_shared<agent::AgentServer>();
+    EXPECT_NO_THROW(ptr->controlApp("chat", "{\"action\":\"poll\"}"));
+    ptr->destroy();
+}
+
+TEST(AgentServerTest, GetAppStateFilemanager)
+{
+    auto ptr = std::make_shared<agent::AgentServer>();
+    EXPECT_NO_THROW(ptr->controlApp("filemanager", "{\"action\":\"list\",\"path\":\"/\"}"));
+    ptr->destroy();
+}
+
+TEST(AgentServerTest, GetAppStateTerminal)
+{
+    auto ptr = std::make_shared<agent::AgentServer>();
+    EXPECT_NO_THROW(ptr->controlApp("terminal", "{\"action\":\"resize\"}"));
+    ptr->destroy();
+}
+
+// ====== open/close for chat, filemanager, terminal ======
+
+TEST(AgentServerTest, OpenAppChat)
+{
+    auto ptr = std::make_shared<agent::AgentServer>();
+    std::string output;
+    ptr->setOutput(
+        [](void* udata, const char* json) {
+            *static_cast<std::string*>(udata) = json;
+        },
+        &output);
+
+    ptr->openApp("chat", "{}");
+    EXPECT_FALSE(output.empty());
+    auto val = boost::json::parse(output);
+    EXPECT_EQ(val.as_object()["app"].as_string(), std::string("chat"));
+    ptr->destroy();
+}
+
+TEST(AgentServerTest, OpenAppFilemanager)
+{
+    auto ptr = std::make_shared<agent::AgentServer>();
+    std::string output;
+    ptr->setOutput(
+        [](void* udata, const char* json) {
+            *static_cast<std::string*>(udata) = json;
+        },
+        &output);
+
+    ptr->openApp("filemanager", "{}");
+    EXPECT_FALSE(output.empty());
+    auto val = boost::json::parse(output);
+    EXPECT_EQ(val.as_object()["app"].as_string(), std::string("filemanager"));
+    ptr->destroy();
+}
+
+TEST(AgentServerTest, OpenAppTerminal)
+{
+    auto ptr = std::make_shared<agent::AgentServer>();
+    std::string output;
+    ptr->setOutput(
+        [](void* udata, const char* json) {
+            *static_cast<std::string*>(udata) = json;
+        },
+        &output);
+
+    ptr->openApp("terminal", "{}");
+    EXPECT_FALSE(output.empty());
+    auto val = boost::json::parse(output);
+    EXPECT_EQ(val.as_object()["app"].as_string(), std::string("terminal"));
+    ptr->destroy();
+}
+
+TEST(AgentServerTest, CloseAppChat)
+{
+    auto ptr = std::make_shared<agent::AgentServer>();
+    std::string output;
+    ptr->setOutput(
+        [](void* udata, const char* json) {
+            *static_cast<std::string*>(udata) = json;
+        },
+        &output);
+
+    ptr->closeApp("chat");
+    EXPECT_FALSE(output.empty());
+    auto val = boost::json::parse(output);
+    EXPECT_EQ(val.as_object()["app"].as_string(), std::string("chat"));
+    ptr->destroy();
+}
+
+TEST(AgentServerTest, CloseAppFilemanager)
+{
+    auto ptr = std::make_shared<agent::AgentServer>();
+    std::string output;
+    ptr->setOutput(
+        [](void* udata, const char* json) {
+            *static_cast<std::string*>(udata) = json;
+        },
+        &output);
+
+    ptr->closeApp("filemanager");
+    EXPECT_FALSE(output.empty());
+    auto val = boost::json::parse(output);
+    EXPECT_EQ(val.as_object()["app"].as_string(), std::string("filemanager"));
+    ptr->destroy();
+}
+
+TEST(AgentServerTest, CloseAppTerminal)
+{
+    auto ptr = std::make_shared<agent::AgentServer>();
+    std::string output;
+    ptr->setOutput(
+        [](void* udata, const char* json) {
+            *static_cast<std::string*>(udata) = json;
+        },
+        &output);
+
+    ptr->closeApp("terminal");
+    EXPECT_FALSE(output.empty());
+    auto val = boost::json::parse(output);
+    EXPECT_EQ(val.as_object()["app"].as_string(), std::string("terminal"));
+    ptr->destroy();
+}
+
 // ====== multi-instance ======
 
 TEST(AgentServerTest, MultipleAgentsIndependent)

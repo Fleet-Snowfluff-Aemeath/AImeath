@@ -7,9 +7,6 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(Boost 1.91 REQUIRED COMPONENTS json)
-if(BOOST_ROOT AND NOT EXISTS "${BOOST_ROOT}")
-    set(BOOST_ROOT "" CACHE PATH "Boost installation root directory (clear to search system paths)" FORCE)
-endif()
 find_package(OpenSSL REQUIRED)
 
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output/lib)
@@ -24,14 +21,17 @@ target_link_libraries(llm PUBLIC OpenSSL::SSL OpenSSL::Crypto Boost::json)
 
 # 功能测试 && 性能测试
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+find_package(yaml-cpp REQUIRED)
 find_package(GTest REQUIRED)
 file(GLOB TEST_SOURCES CONFIGURE_DEPENDS
     test/*.cpp
 )
 add_executable(tests ${TEST_SOURCES})
 set_target_properties(tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output/test)
-target_link_libraries(tests llm GTest::GTest GTest::Main)
-target_include_directories(tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_link_libraries(tests llm GTest::GTest GTest::Main yaml-cpp::yaml-cpp)
+target_include_directories(tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
 add_custom_target(run_tests
     COMMAND ${CMAKE_COMMAND} -E env LD_LIBRARY_PATH=${CMAKE_BINARY_DIR}/output/lib $<TARGET_FILE:tests>
     DEPENDS tests
@@ -42,8 +42,10 @@ find_package(benchmark REQUIRED)
 function(add_benchmark target src)
     add_executable(${target} ${src})
     set_target_properties(${target} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output/bench)
-    target_link_libraries(${target} PRIVATE llm benchmark::benchmark)
-    target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+    target_link_libraries(${target} PRIVATE llm benchmark::benchmark yaml-cpp::yaml-cpp)
+    target_include_directories(${target} PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+    )
 endfunction()
 
 # ===================== 2. 自动扫描 + 批量创建测试程序 =====================

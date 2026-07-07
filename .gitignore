@@ -1,6 +1,8 @@
 3rd
 build/
+build_test/
 node_modules/
 desktop/dist
 config.json
 private/
+.opencode

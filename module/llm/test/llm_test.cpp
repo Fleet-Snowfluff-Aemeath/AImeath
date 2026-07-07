@@ -4,7 +4,47 @@
 
 #include <boost/asio.hpp>
 #include <boost/json.hpp>
+#include <yaml-cpp/yaml.h>
 #include <set>
+
+namespace {
+
+boost::json::array& llmTestTools() {
+    static boost::json::array tools;
+    if (tools.empty()) {
+        YAML::Node config = YAML::LoadFile("../../agent/config/tools.yml");
+        for (auto t : config["tools"]) {
+            boost::json::object tool;
+            tool["type"] = "function";
+            boost::json::object func;
+            func["name"] = t["name"].as<std::string>();
+            func["description"] = t["description"].as<std::string>();
+            boost::json::object params;
+            params["type"] = "object";
+            boost::json::object props;
+            if (t["params"]["properties"])
+                for (auto prop : t["params"]["properties"]) {
+                    boost::json::object p;
+                    p["type"] = prop.second["type"].as<std::string>();
+                    if (prop.second["description"])
+                        p["description"] = prop.second["description"].as<std::string>();
+                    props[prop.first.as<std::string>()] = std::move(p);
+                }
+            params["properties"] = std::move(props);
+            boost::json::array required;
+            if (t["params"]["required"])
+                for (auto r : t["params"]["required"])
+                    required.push_back(boost::json::string(r.as<std::string>()));
+            params["required"] = std::move(required);
+            func["parameters"] = std::move(params);
+            tool["function"] = std::move(func);
+            tools.push_back(std::move(tool));
+        }
+    }
+    return tools;
+}
+
+}
 
 // ====== Llm data structs ======
 
@@ -349,9 +389,9 @@ TEST(LlmUtilsTest, BuildChatBodyEmptyMessages)
     EXPECT_TRUE(parsed.as_object()["messages"].as_array().empty());
 }
 
-TEST(LlmUtilsTest, GetDefaultTools)
+TEST(LlmUtilsTest, GetToolsFromYaml)
 {
-    auto tools = llm::get_default_tools();
+    auto& tools = llmTestTools();
     EXPECT_GE(tools.size(), 4u);
 
     std::set<std::string> names;
@@ -366,17 +406,16 @@ TEST(LlmUtilsTest, GetDefaultTools)
     EXPECT_TRUE(names.count("get_app_state"));
 }
 
-TEST(LlmUtilsTest, GetDefaultToolsCount)
+TEST(LlmUtilsTest, GetToolsCount)
 {
-    auto tools = llm::get_default_tools();
-    EXPECT_EQ(tools.size(), 5u);
-    EXPECT_EQ(tools[4].as_object()["function"].as_object()["name"].as_string(), std::string("list_apps"));
+    auto& tools = llmTestTools();
+    EXPECT_GE(tools.size(), 12u);
 }
 
 TEST(LlmUtilsTest, InjectTools)
 {
     std::string body = R"({"model":"test","messages":[]})";
-    llm::inject_tools(body, true);
+    llm::inject_tools(body, true, {}, llmTestTools());
     auto parsed = boost::json::parse(body);
     auto& obj = parsed.as_object();
     EXPECT_TRUE(obj.contains("tools"));
@@ -387,7 +426,7 @@ TEST(LlmUtilsTest, InjectToolsDisabled)
 {
     std::string body = R"({"model":"test","messages":[]})";
     std::string original = body;
-    llm::inject_tools(body, false);
+    llm::inject_tools(body, false, {}, llmTestTools());
     EXPECT_EQ(body, original);
 }
 
@@ -395,7 +434,7 @@ TEST(LlmUtilsTest, InjectToolsOnNonObject)
 {
     std::string body = R"("just a string, not an object")";
     std::string original = body;
-    llm::inject_tools(body, true);
+    llm::inject_tools(body, true, {}, llmTestTools());
     EXPECT_EQ(body, original);
 }
 

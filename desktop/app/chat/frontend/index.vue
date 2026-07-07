@@ -2,14 +2,41 @@
   <div class="chat-page">
     <header class="chat-header">
       <h1>聊天</h1>
+      <span class="chat-type-badge" :class="chatType">{{ chatTypeLabel }}</span>
+      <span v-if="USER_NAME !== '用户'" class="chat-user">{{ USER_AVATAR }} {{ USER_NAME }}</span>
       <span class="chat-status" :class="statusClass">{{ statusText }}</span>
+      <button class="agent-toggle" @click="showAgents = !showAgents" title="Agent列表">
+        🤖 {{ agents.length }}
+      </button>
     </header>
     <main class="chat-main" ref="msgBox">
+      <transition name="fade">
+        <div v-if="showAgents" class="agent-panel">
+          <div class="agent-panel-header">房间Agent ({{ agents.length }})</div>
+          <div v-for="(a, i) in agents" :key="i" class="agent-item">
+            <span class="agent-item-avatar">{{ fixAvatar(a.avatar) }}</span>
+            <span class="agent-item-name">{{ a.name }}</span>
+            <button class="agent-item-rm" @click="removeAgent(a.name)">×</button>
+          </div>
+          <div class="agent-panel-add">
+            <input v-model="newAgentName" class="agent-add-input" placeholder="Agent名称..."
+              @keydown.enter="addAgent" />
+            <button class="agent-add-btn" @click="addAgent">+</button>
+          </div>
+        </div>
+      </transition>
       <div
         v-for="(m, i) in messages"
         :key="i"
         :class="['msg', m.isSelf ? 'msg-self' : 'msg-other']"
       >
+        <div class="msg-wrapper" :class="m.isSelf ? 'wrapper-self' : 'wrapper-other'">
+        <div v-if="m.senderAvatar" class="msg-avatar" :class="m.isSelf ? 'avatar-self' : 'avatar-other'">
+          <img v-if="isImageUrl(m.senderAvatar)" :src="m.senderAvatar" class="avatar-img" />
+          <span v-else>{{ m.senderAvatar }}</span>
+        </div>
+        <div class="msg-content-col">
+        <div v-if="m.sender" class="msg-name">{{ m.sender }}</div>
         <div v-if="m.type === 'embed'" class="bubble bubble-embed" :class="'bubble-'+m.kind">
           <div v-if="m.kind === 'image'" class="embed-body">
             <img :src="m.url" :alt="m.title" class="embed-img" @click="previewImg(m.url)" />
@@ -41,16 +68,26 @@
           </details>
           <div v-html="renderMarkdown(m.text)"></div>
         </div>
+        </div>
+        </div>
       </div>
     </main>
     <footer class="chat-footer">
-      <input
-        v-model="input"
-        class="chat-input"
-        placeholder="输入消息..."
-        @keydown.enter="send"
-        :disabled="!connected"
-      />
+      <div class="chat-input-wrap">
+        <div v-if="showMentions && filteredAgents.length" class="mention-dropdown">
+          <div v-for="a in filteredAgents" :key="a.name" class="mention-item"
+            @mousedown.prevent @click="selectMention(a.name)">
+            <span class="mention-name">{{ a.name }}</span>
+          </div>
+        </div>
+        <textarea
+          v-model="input"
+          class="chat-input"
+          placeholder="输入消息... @agent名可定向发送"
+          @keydown="onInputKeydown"
+          :disabled="!connected"
+        ></textarea>
+      </div>
       <button class="chat-send" @click="send" :disabled="!connected || !input.trim()">发送</button>
       <button v-if="isStreaming" class="chat-stop" @click="stopStream" title="停止生成">
         <svg viewBox="0 0 24 24" width="14" height="14"><rect x="4" y="4" width="16" height="16" rx="2" fill="currentColor"/></svg>
@@ -60,7 +97,7 @@
 </template>
 
 <script setup>
-import { ref, computed, nextTick, onBeforeUnmount, onMounted } from 'vue'
+import { ref, computed, reactive, nextTick, onBeforeUnmount, onMounted } from 'vue'
 import { marked } from 'marked'
 import mermaid from 'mermaid'
 import { createChannel } from '../../../src/services/channel.js'
@@ -76,19 +113,28 @@ mermaid.initialize({
 const WS_URL = getWsUrl('/chat')
 const WID = new URLSearchParams(location.search).get('wid') || ''
 const DNAME = decodeURIComponent(new URLSearchParams(location.search).get('name') || '')
+const DAVATAR = decodeURIComponent(new URLSearchParams(location.search).get('avatar') || '')
+const USER_NAME = DNAME || '用户'
+const USER_AVATAR = DAVATAR || '👤'
 
 const input = ref('')
 const messages = ref([])
+const agents = ref([])
+const showAgents = ref(false)
+const newAgentName = ref('')
+const showMentions = ref(false)
+const mentionFilter = ref('')
 const connected = ref(false)
 const streamingIdx = ref(-1)
+const streamIdxBySender = reactive({})
 let pollTimer = null
-let deltaBuffer = ''
-let reasoningBuffer = ''
-let rafPending = false
 
 const statusText = computed(() => connected.value ? '已连接' : '未连接')
 const statusClass = computed(() => connected.value ? 'status-ok' : 'status-err')
-const isStreaming = computed(() => streamingIdx.value >= 0)
+const isStreaming = computed(() => Object.keys(streamIdxBySender).length > 0)
+const chatType = computed(() => isGroupChat.value ? 'group' : 'private')
+const chatTypeLabel = computed(() => isGroupChat.value ? '群聊' : '私聊')
+const isGroupChat = ref(true)
 
 const msgBox = ref(null)
 
@@ -100,71 +146,60 @@ ch.onOpen(() => {
     if (WID) p.window_id = WID
     if (DNAME) p.display_name = DNAME
     ch.send(p)
+    setTimeout(refreshAgents, 500)
   })
 ch.onError(() => { connected.value = false })
-ch.onClose(() => { connected.value = false; clearStream(); stopPoll() })
+ch.onClose(() => { connected.value = false; stopPoll() })
 
 function stopPoll() {
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
 }
 
 function clearStream() {
-  deltaBuffer = ''
-  reasoningBuffer = ''
-  rafPending = false
-}
-
-function flushStream() {
-  rafPending = false
-  if (streamingIdx.value < 0) return
-  let changed = false
-  if (deltaBuffer) {
-    messages.value[streamingIdx.value].text += deltaBuffer
-    deltaBuffer = ''
-    changed = true
-  }
-  if (reasoningBuffer) {
-    messages.value[streamingIdx.value].reasoning += reasoningBuffer
-    reasoningBuffer = ''
-    changed = true
-  }
-  if (changed) scrollBottom()
-}
-
-function scheduleFlush() {
-  if (!rafPending) {
-    rafPending = true
-    requestAnimationFrame(flushStream)
-  }
+  Object.keys(streamIdxBySender).forEach(k => delete streamIdxBySender[k])
 }
 
 ch.onMessage((data) => {
+  const sender = data.sender_name || ''
+  const senderAvatar = data.sender_avatar || ''
   if (data.type === 'embed') {
-    messages.value.push({ isSelf: false, type: 'embed', kind: data.kind, url: data.url, title: data.title, name: data.name, text: data.text || '' })
+    if (data.kind === 'text' && data.text && data.text.startsWith('房间AI助手列表')) {
+      const lines = data.text.split('\n')
+      agents.value = []
+      for (let i = 1; i < lines.length; i++) {
+        const m = lines[i].match(/^\d+\.\s+(\S+)\s+(.+)$/)
+        if (m) agents.value.push({ avatar: fixAvatar(m[1]), name: m[2].trim() })
+      }
+    }
+    messages.value.push({ isSelf: false, type: 'embed', kind: data.kind, url: data.url, title: data.title, name: data.name, text: data.text || '', sender, senderAvatar })
     scrollBottom()
   } else if (data.type === 'stream_start') {
-    messages.value.push({ text: '', reasoning: '', isSelf: false })
+    messages.value.push({ text: '', reasoning: '', isSelf: false, sender, senderAvatar })
+    streamIdxBySender[sender || ''] = messages.value.length - 1
     streamingIdx.value = messages.value.length - 1
     scrollBottom()
     startPoll()
   } else if (data.type === 'reasoning') {
-    if (streamingIdx.value >= 0) {
-      reasoningBuffer += data.text
-      scheduleFlush()
-    }
+    const idx = streamIdxBySender[sender || '']
+    if (idx != null) messages.value[idx].reasoning += data.text
+    scrollBottom()
   } else if (data.type === 'delta') {
-    if (streamingIdx.value >= 0) {
-      deltaBuffer += data.text
-      scheduleFlush()
+    const idx = streamIdxBySender[sender || '']
+    if (idx != null) {
+      messages.value[idx].text += data.text
+      scrollBottom()
     }
   } else if (data.type === 'stream_end') {
-    if (deltaBuffer || reasoningBuffer) flushStream()
-    clearStream()
-    stopPoll()
-    if (data.msg && streamingIdx.value >= 0) {
-      messages.value[streamingIdx.value].text = '⚠️ ' + data.msg
-    }
-    streamingIdx.value = -1
+    delete streamIdxBySender[sender || '']
+    if (Object.keys(streamIdxBySender).length === 0) stopPoll()
+    scrollBottom()
+  } else if (data.type === 'agent_msg') {
+    messages.value.push({
+      text: data.content || '',
+      isSelf: false,
+      sender: data.sender_name || 'Agent',
+      senderAvatar: data.sender_avatar || '🤖',
+    })
     scrollBottom()
   } else if (data.type === 'agent') {
     if (data.action === 'open_app') {
@@ -188,7 +223,15 @@ ch.onMessage((data) => {
     }
     scrollBottom()
   } else if (data.text !== undefined) {
-    messages.value.push({ text: data.text, isSelf: false })
+    if (data.type === 'text' && typeof data.text === 'string' && data.text.startsWith('房间AI助手列表')) {
+      const parsed = data.text.match(/(\S+)\s+(\S+)/g)
+      if (parsed) agents.value = parsed.slice(1).map(s => {
+        const parts = s.split(' ')
+        return { avatar: parts[0], name: parts[1] }
+      })
+      else agents.value = []
+    }
+    messages.value.push({ text: data.text, isSelf: false, sender, senderAvatar })
     scrollBottom()
   }
 })
@@ -272,8 +315,9 @@ function send() {
   if (WID) p.window_id = WID
   if (DNAME) p.display_name = DNAME
   ch.send(p)
-  messages.value.push({ text, isSelf: true })
+  messages.value.push({ text, isSelf: true, sender: USER_NAME, senderAvatar: USER_AVATAR })
   input.value = ''
+  showMentions.value = false
   scrollBottom()
 }
 
@@ -282,7 +326,60 @@ function stopStream() {
   if (WID) p.window_id = WID
   ch.send(p)
   clearStream()
-  streamingIdx.value = -1
+}
+
+function addAgent() {
+  const name = newAgentName.value.trim()
+  if (!name) return
+  ch.send({ text: `/agent add ${name}` })
+  newAgentName.value = ''
+  showAgents.value = false
+  setTimeout(refreshAgents, 800)
+}
+
+function removeAgent(name) {
+  ch.send({ text: `/agent remove ${name}` })
+  setTimeout(refreshAgents, 800)
+}
+
+function fixAvatar(av) {
+  return /^(https?:|\/)/i.test((av || '').trim()) ? '🤖' : av
+}
+
+function refreshAgents() {
+  ch.send({ text: '/agent list' })
+}
+
+function onInputKeydown(e) {
+  if (e.key === 'Enter' && !e.shiftKey && !showMentions.value) { e.preventDefault(); send(); return }
+  if (e.key === '@') { showMentions.value = true; mentionFilter.value = ''; return }
+  if (showMentions.value) {
+    if (e.key === 'Escape') { showMentions.value = false; return }
+    if (e.key === 'Enter') { e.preventDefault(); return }
+    if (e.key === ' ') { showMentions.value = false; return }
+    if (e.key === 'Backspace') {
+      mentionFilter.value = mentionFilter.value.slice(0, -1)
+      if (!mentionFilter.value) showMentions.value = false
+      return
+    }
+    if (e.key.length === 1) { mentionFilter.value += e.key; return }
+  }
+}
+
+function selectMention(agentName) {
+  input.value += agentName + ' '
+  showMentions.value = false
+  mentionFilter.value = ''
+}
+
+const filteredAgents = computed(() => {
+  if (!showMentions.value) return []
+  const f = mentionFilter.value.toLowerCase()
+  return agents.value.filter(a => a.name.toLowerCase().includes(f))
+})
+
+function isImageUrl(val) {
+  return /^(https?:|\/)/i.test(val)
 }
 
 window.addEventListener('message', (e) => {
@@ -318,8 +415,163 @@ onBeforeUnmount(() => ch.close())
 .chat-header h1 {
   font-size: 18px;
   font-weight: 600;
-  flex: 1;
   margin: 0;
+}
+
+.chat-user {
+  font-size: 13px;
+  color: #6b7280;
+  flex-shrink: 0;
+}
+
+.chat-type-badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+
+.chat-type-badge.group {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.chat-type-badge.private {
+  background: #fce7f3;
+  color: #9d174d;
+}
+
+.agent-toggle {
+  width: 36px;
+  height: 30px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.agent-toggle:hover {
+  background: #f3f4f6;
+}
+
+.agent-panel {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  width: 200px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+  z-index: 10;
+  padding: 8px;
+}
+
+.agent-panel-header {
+  font-size: 12px;
+  font-weight: 600;
+  color: #374151;
+  padding: 4px 8px;
+  border-bottom: 1px solid #f3f4f6;
+  margin-bottom: 4px;
+}
+
+.agent-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.agent-item:hover {
+  background: #f9fafb;
+}
+
+.agent-item-avatar { font-size: 14px; }
+.agent-item-name { flex: 1; color: #374151; }
+
+.agent-item-rm {
+  width: 18px; height: 18px;
+  border: none; background: none;
+  color: #9ca3af; cursor: pointer;
+  font-size: 14px; line-height: 1;
+}
+
+.agent-item-rm:hover { color: #ef4444; }
+
+.agent-panel-add {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.agent-add-input {
+  flex: 1;
+  padding: 4px 8px;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  font-size: 12px;
+  outline: none;
+}
+
+.agent-add-btn {
+  width: 24px; height: 24px;
+  border: none;
+  background: #2563eb;
+  color: #fff;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.chat-input-wrap {
+  flex: 1;
+  position: relative;
+}
+
+.mention-dropdown {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px 8px 0 0;
+  box-shadow: 0 -2px 8px rgba(0,0,0,0.06);
+  max-height: 160px;
+  overflow-y: auto;
+  z-index: 20;
+}
+
+.mention-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.mention-item:hover {
+  background: #eff6ff;
+}
+
+.mention-avatar { font-size: 16px; }
+.mention-name { color: #1f2937; }
+
+.fade-enter-active, .fade-leave-active {
+  transition: opacity 0.15s ease;
+}
+.fade-enter-from, .fade-leave-to {
+  opacity: 0;
 }
 
 .chat-status {
@@ -340,6 +592,7 @@ onBeforeUnmount(() => ch.close())
 }
 
 .chat-main {
+  position: relative;
   flex: 1;
   overflow-y: auto;
   padding: 16px 20px;
@@ -350,6 +603,7 @@ onBeforeUnmount(() => ch.close())
 
 .msg {
   display: flex;
+  align-items: flex-start;
 }
 
 .msg-self {
@@ -360,8 +614,115 @@ onBeforeUnmount(() => ch.close())
   justify-content: flex-start;
 }
 
-.bubble {
+.msg-inner {
+  display: flex;
+  flex-direction: column;
   max-width: 70%;
+}
+
+.msg-self .msg-inner {
+  align-items: flex-end;
+}
+
+.msg-other .msg-inner {
+  align-items: flex-start;
+}
+
+.msg-inner {
+  display: flex;
+  flex-direction: column;
+  max-width: 70%;
+}
+
+.msg-self .msg-inner {
+  align-items: flex-end;
+}
+
+.msg-other .msg-inner {
+  align-items: flex-start;
+}
+
+.msg-sender {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 12px 2px;
+  font-size: 12px;
+}
+
+.msg-sender-other {
+  justify-content: flex-start;
+}
+
+.msg-sender-self {
+  justify-content: flex-end;
+}
+
+.sender-avatar {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.sender-name {
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.msg-wrapper {
+  display: flex;
+  max-width: 70%;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.wrapper-self {
+  flex-direction: row-reverse;
+}
+
+.msg-content-col {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.msg-self .msg-content-col {
+  align-items: flex-end;
+}
+
+.msg-name {
+  font-size: 15px;
+  color: #6b7280;
+  font-weight: 500;
+  padding-bottom: 2px;
+  white-space: nowrap;
+}
+
+.msg-avatar {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  flex-shrink: 0;
+  background: #e5e7eb;
+}
+
+.msg-other .msg-avatar {
+  background: #dbeafe;
+}
+
+.avatar-img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.bubble {
+  max-width: 100%;
   padding: 10px 16px;
   border-radius: 18px;
   font-size: 15px;
@@ -391,6 +752,7 @@ onBeforeUnmount(() => ch.close())
 }
 
 .chat-input {
+  width: 100%;
   flex: 1;
   padding: 10px 14px;
   border: 1px solid #d1d5db;
@@ -398,6 +760,12 @@ onBeforeUnmount(() => ch.close())
   font-size: 15px;
   outline: none;
   transition: border-color 0.2s;
+  resize: vertical;
+  font-family: inherit;
+  line-height: 1.5;
+  min-height: 40px;
+  max-height: 200px;
+  overflow-y: auto;
 }
 
 .chat-input:focus {

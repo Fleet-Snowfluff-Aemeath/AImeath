@@ -4,6 +4,8 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     project(chat LANGUAGES CXX)
     add_subdirectory(${PROJ_ROOT}/module/core ${CMAKE_BINARY_DIR}/core)
     add_subdirectory(${PROJ_ROOT}/module/llm ${CMAKE_BINARY_DIR}/llm)
+    add_subdirectory(${PROJ_ROOT}/module/agent ${CMAKE_BINARY_DIR}/agent)
+    add_subdirectory(${PROJ_ROOT}/module/app ${CMAKE_BINARY_DIR}/app)
 endif()
 
 set(CMAKE_CXX_STANDARD 17)
@@ -13,9 +15,6 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output/lib)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output/lib)
 
 find_package(Boost 1.91 REQUIRED COMPONENTS json)
-if(BOOST_ROOT AND NOT EXISTS "${BOOST_ROOT}")
-    set(BOOST_ROOT "" CACHE PATH "Boost installation root directory (clear to search system paths)" FORCE)
-endif()
 find_package(OpenSSL REQUIRED)
 
 file(GLOB SRC_SOURCES CONFIGURE_DEPENDS
@@ -23,11 +22,15 @@ file(GLOB SRC_SOURCES CONFIGURE_DEPENDS
 )
 add_library(chat SHARED ${SRC_SOURCES})
 target_include_directories(chat PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+
+target_compile_definitions(chat PRIVATE PROJ_ROOT="${PROJ_ROOT}")
+
 target_include_directories(chat PRIVATE
     ${PROJ_ROOT}/module/app/include
+    ${PROJ_ROOT}/module/agent/include
 )
 
-target_link_libraries(chat PRIVATE Boost::json OpenSSL::SSL OpenSSL::Crypto core llm)
+target_link_libraries(chat PRIVATE Boost::json OpenSSL::SSL OpenSSL::Crypto core llm agent)
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 find_package(GTest REQUIRED)
@@ -36,10 +39,12 @@ file(GLOB TEST_SOURCES CONFIGURE_DEPENDS
 )
 add_executable(tests ${TEST_SOURCES})
 set_target_properties(tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output/test)
-target_link_libraries(tests chat GTest::GTest GTest::Main)
+target_link_libraries(tests chat GTest::GTest GTest::Main Boost::json)
 target_include_directories(tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${PROJ_ROOT}/module/app/include
+    ${PROJ_ROOT}/module/core/include
+    ${Boost_INCLUDE_DIRS}
 )
 add_custom_target(run_tests
     COMMAND ${CMAKE_COMMAND} -E env LD_LIBRARY_PATH=${CMAKE_BINARY_DIR}/output/lib $<TARGET_FILE:tests>
@@ -54,6 +59,7 @@ function(add_benchmark target src)
     target_include_directories(${target} PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${PROJ_ROOT}/module/app/include
+        ${PROJ_ROOT}/module/core/include
         ${Boost_INCLUDE_DIRS}
     )
 endfunction()

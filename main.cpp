@@ -1,10 +1,10 @@
 /**
- * AImeath — 统一 WebSocket 服务端（全异步架构）
+ * AImeath �?统一 WebSocket 服务端（全异步架构）
  *
- * 端口从 config.json 的 "port" 字段读取，默认 3001。
- * 每个连接由 shared_ptr<Session> 管理生命周期，
- * 通过 async_read / async_write 处理 WebSocket 消息。
- * Session / Listener 定义见 module/core/include/ws_server.hpp
+ * 端口�?config.json �?"port" 字段读取，默�?3001�?
+ * 每个连接�?shared_ptr<Session> 管理生命周期�?
+ * 通过 async_read / async_write 处理 WebSocket 消息�?
+ * Session / Listener 定义�?module/core/include/ws_server.hpp
  */
 
 #include <iostream>
@@ -51,7 +51,7 @@ int main()
     AppManager::instance().init(&cache);
 
     Config::instance().setChatCachePtr(reinterpret_cast<uintptr_t>(&cache));
-    Config::instance().sessionRegistry().setStashTtlSec(stash_ttl);
+    SessionManager::instance().setStashTtlSec(stash_ttl);
 
     auto listener = std::make_shared<Listener>(io, logger, cache, &fallback_pool, port);
     if (max_conn > 0)

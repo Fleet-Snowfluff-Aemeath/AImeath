@@ -1,15 +1,7 @@
 #include <benchmark/benchmark.h>
 #include <string>
 
-// ---- C ABI for ChatApp (from chat_server.cpp) ----
-extern "C" {
-void* app_create(const char* config_json);
-void  app_destroy(void* p);
-void  app_on_input(void* p, const char* input_json);
-int   app_is_done(void* p);
-typedef void (*app_output_fn)(void* userdata, const char* json);
-void  app_set_output(void* p, app_output_fn cb, void* userdata);
-}
+#include "chat_server.hpp"
 
 static void nullOutput(void*, const char*) {}
 

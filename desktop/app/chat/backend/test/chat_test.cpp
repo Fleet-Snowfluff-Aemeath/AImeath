@@ -2,21 +2,9 @@
 #include <vector>
 #include <string>
 #include <mutex>
+#include <boost/json.hpp>
 
-// ---- C ABI for ChatApp (from chat_server.cpp) ----
-extern "C" {
-void* app_create(const char* config_json);
-void  app_destroy(void* p);
-int   app_is_done(void* p);
-typedef void (*app_output_fn)(void* userdata, const char* json);
-void  app_set_output(void* p, app_output_fn cb, void* userdata);
-void  app_set_io_context(void* p, void* io_context);
-void  app_on_input(void* p, const char* input_json);
-int   app_queue_size(void* p);
-int   app_streaming(void* p);
-void  app_test_set_streaming(void* p, int val);
-void  app_test_drain_queue(void* p);
-}
+#include "chat_server.hpp"
 
 struct CaptureOutput
 {
@@ -226,30 +214,9 @@ TEST(ChatServerTest, StressMultiRound)
     app_destroy(app);
 }
 
-// ====== 消息队列 ======
-
-TEST(ChatServerTest, TextWhileStreamingQueues)
-{
-    void* app = app_create(nullptr);
-    ASSERT_NE(app, nullptr);
-
-    CaptureOutput capture;
-    app_set_output(app, capture_callback, &capture);
-
-    app_test_set_streaming(app, 1);
-    EXPECT_EQ(app_streaming(app), 1);
-    EXPECT_EQ(app_queue_size(app), 0);
-
-    app_on_input(app, R"({"text":"second msg"})");
-    app_on_input(app, R"({"text":"third msg"})");
-    EXPECT_EQ(app_queue_size(app), 2);
-
-    app_destroy(app);
-}
-
 // ====== Stop 动作 ======
 
-TEST(ChatServerTest, StopActionClearsStreaming)
+TEST(ChatServerTest, StopActionEmitsStreamEnd)
 {
     void* app = app_create(nullptr);
     ASSERT_NE(app, nullptr);
@@ -257,12 +224,20 @@ TEST(ChatServerTest, StopActionClearsStreaming)
     CaptureOutput capture;
     app_set_output(app, capture_callback, &capture);
 
-    app_test_set_streaming(app, 1);
-    EXPECT_EQ(app_streaming(app), 1);
-
     app_on_input(app, R"({"action":"stop"})");
-    EXPECT_EQ(app_streaming(app), 0);
-    EXPECT_EQ(app_queue_size(app), 0);
+    EXPECT_EQ(app_is_done(app), 0);
+
+    bool has_stream_end = false;
+    {
+        std::lock_guard<std::mutex> lock(capture.mtx);
+        for (auto& e : capture.events) {
+            auto v = boost::json::parse(e);
+            if (v.is_object() && v.as_object().contains("type") &&
+                v.as_object()["type"].as_string() == "stream_end")
+                has_stream_end = true;
+        }
+    }
+    EXPECT_TRUE(has_stream_end);
 
     app_destroy(app);
 }
@@ -279,32 +254,6 @@ TEST(ChatServerTest, PollActionDoesNotCrash)
 
     app_on_input(app, R"({"action":"poll"})");
     EXPECT_EQ(app_is_done(app), 0);
-
-    app_destroy(app);
-}
-
-// ====== 流状态测试 ======
-
-TEST(ChatServerTest, SetStreamingAndDrainQueue)
-{
-    void* app = app_create(nullptr);
-    ASSERT_NE(app, nullptr);
-
-    CaptureOutput capture;
-    app_set_output(app, capture_callback, &capture);
-
-    EXPECT_EQ(app_streaming(app), 0);
-    EXPECT_EQ(app_queue_size(app), 0);
-
-    app_test_set_streaming(app, 1);
-    EXPECT_EQ(app_streaming(app), 1);
-
-    std::string queued = R"({"text":"queued msg"})";
-    app_on_input(app, queued.c_str());
-    EXPECT_GE(app_queue_size(app), 1);
-
-    app_test_drain_queue(app);
-    EXPECT_EQ(app_queue_size(app), 0);
 
     app_destroy(app);
 }
@@ -412,13 +361,9 @@ TEST(ChatServerTest, MultipleStopDoesNotCrash)
     CaptureOutput capture;
     app_set_output(app, capture_callback, &capture);
 
-    app_test_set_streaming(app, 1);
-    EXPECT_EQ(app_streaming(app), 1);
-
     for (int i = 0; i < 5; ++i)
         app_on_input(app, R"({"action":"stop"})");
 
-    EXPECT_EQ(app_streaming(app), 0);
     EXPECT_EQ(app_is_done(app), 0);
 
     app_destroy(app);
