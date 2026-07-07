@@ -18,10 +18,10 @@ file(GLOB SRC_SOURCES CONFIGURE_DEPENDS
 add_library(llm SHARED ${SRC_SOURCES})
 target_include_directories(llm PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(llm PUBLIC OpenSSL::SSL OpenSSL::Crypto Boost::json)
-find_package(yaml-cpp REQUIRED)
 
 # 功能测试 && 性能测试
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+find_package(yaml-cpp REQUIRED)
 find_package(GTest REQUIRED)
 file(GLOB TEST_SOURCES CONFIGURE_DEPENDS
     test/*.cpp
