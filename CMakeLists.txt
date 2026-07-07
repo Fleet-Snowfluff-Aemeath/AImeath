@@ -5,6 +5,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 include(FetchContent)
+
 FetchContent_Declare(yaml-cpp
     GIT_REPOSITORY https://github.com/jbeder/yaml-cpp.git
     GIT_TAG yaml-cpp-0.8.0
@@ -13,6 +14,15 @@ FetchContent_Declare(yaml-cpp
     OVERRIDE_FIND_PACKAGE
 )
 FetchContent_MakeAvailable(yaml-cpp)
+
+FetchContent_Declare(Boost
+    GIT_REPOSITORY https://github.com/boostorg/boost.git
+    GIT_TAG boost-1.91.0-1
+    SYSTEM
+    OVERRIDE_FIND_PACKAGE
+)
+set(BOOST_INCLUDE_LIBRARIES json url filesystem)
+FetchContent_MakeAvailable(Boost)
 
 file(GLOB MODULE_DIRS CONFIGURE_DEPENDS module/*)
 foreach(module_dir ${MODULE_DIRS})
