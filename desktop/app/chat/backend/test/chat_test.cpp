@@ -3,20 +3,7 @@
 #include <string>
 #include <mutex>
 
-// ---- C ABI for ChatApp (from chat_server.cpp) ----
-extern "C" {
-void* app_create(const char* config_json);
-void  app_destroy(void* p);
-int   app_is_done(void* p);
-typedef void (*app_output_fn)(void* userdata, const char* json);
-void  app_set_output(void* p, app_output_fn cb, void* userdata);
-void  app_set_io_context(void* p, void* io_context);
-void  app_on_input(void* p, const char* input_json);
-int   app_queue_size(void* p);
-int   app_streaming(void* p);
-void  app_test_set_streaming(void* p, int val);
-void  app_test_drain_queue(void* p);
-}
+#include "chat_server.hpp"
 
 struct CaptureOutput
 {
