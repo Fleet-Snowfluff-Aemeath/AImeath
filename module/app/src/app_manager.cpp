@@ -44,7 +44,7 @@ static void appStateNotifyBridge(const char* app, const char* state, void* ctx)
 void AppManager::init(IModuleCache* cache)
 {
     cache_ = cache;
-    Config::instance().setAppStateNotifyFn(&appStateNotifyBridge, this);
+    AppStateNotifier::instance().subscribe(&appStateNotifyBridge, this);
     APPMGR_LOG("info", "AppManager initialized");
 }
 

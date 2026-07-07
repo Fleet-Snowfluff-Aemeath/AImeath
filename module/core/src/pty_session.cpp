@@ -74,7 +74,7 @@ void PtySession::startReadLoop()
 void PtySession::pushOutput(const std::string& text)
 {
     if (!m_output_cb || text.empty()) return;
-    m_output_cb(m_output_udata, text.c_str());
+    m_output_cb(text);
 }
 
 void PtySession::write(const std::string& data)
@@ -132,8 +132,7 @@ void PtySession::close()
     }
 }
 
-void PtySession::setOutput(app_output_fn cb, void* udata)
+void PtySession::setOutput(std::function<void(const std::string&)> cb)
 {
-    m_output_cb = cb;
-    m_output_udata = udata;
+    m_output_cb = std::move(cb);
 }

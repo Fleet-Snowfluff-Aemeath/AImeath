@@ -41,12 +41,9 @@ TEST_F(PtySessionTest, StartSimpleCommand)
 TEST_F(PtySessionTest, StartAsyncSimpleCommand)
 {
     std::string output;
-    m_session->setOutput(
-        [](void* udata, const char* text) {
-            auto* s = static_cast<std::string*>(udata);
-            *s += text;
-        },
-        &output);
+    m_session->setOutput([&output](const std::string& text) {
+        output += text;
+    });
 
     m_session->startAsync("echo test_output");
     std::this_thread::sleep_for(std::chrono::milliseconds(500));

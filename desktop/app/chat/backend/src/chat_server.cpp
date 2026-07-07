@@ -13,19 +13,21 @@
 #include "agent_manager.hpp"
 #include "config.hpp"
 #include "ws_server.hpp"
+#include "app_mod.hpp"
+#include "logger.hpp"
 
-// ---- ChatApp state ----
+namespace {
 
-#define CHAT_LOG(level, msg) \
-    do { \
-        auto now = std::chrono::system_clock::now(); \
-        auto t = std::chrono::system_clock::to_time_t(now); \
-        auto ms = std::chrono::duration_cast<std::chrono::milliseconds>( \
-            now.time_since_epoch()) % 1000; \
-        char _buf[32]; \
-        std::strftime(_buf, sizeof(_buf), "%H:%M:%S", std::localtime(&t)); \
-        std::cerr << "[" << _buf << "." << ms.count() << "] " << level << " " << msg << std::endl; \
-    } while(0)
+Logger& chatLog()
+{
+    static Logger ls(std::cerr, Logger::INFO);
+    return ls;
+}
+
+} // namespace
+
+#define CHAT_LOG(tag, msg)  do { auto _ls = chatLog().debug(tag); _ls << msg; } while(0)
+#define CHAT_INFO(tag, msg) do { auto _ls = chatLog().info(tag);  _ls << msg; } while(0)
 
 static void processNextInQueue(ChatApp* app);
 static void handleUserMessageAsync(ChatApp* app, const std::string& text, const std::string& sender_name = "用户");
@@ -51,13 +53,13 @@ void ChatApp::push_output(boost::json::value val)
             if (it != o.end() && it->value().is_string()) {
                 auto t = it->value().as_string();
                 if (t == "stream_start")
-                    CHAT_LOG("[chat-out]", "stream_start (round " << round << ")");
+                    CHAT_INFO("[chat-out]", "stream_start (round " << round << ")");
                 else if (t == "stream_end")
                     is_end = true;
                 else if (t == "delta")
-                    CHAT_LOG("[chat-out]", "delta (round " << round << ")");
+                    CHAT_INFO("[chat-out]", "delta (round " << round << ")");
                 else if (t == "reasoning")
-                    CHAT_LOG("[chat-out]", "reasoning (round " << round << ")");
+                    CHAT_INFO("[chat-out]", "reasoning (round " << round << ")");
             }
         }
         {
@@ -508,9 +510,7 @@ void* app_create(const char* config_json)
     auto ptr = std::make_shared<ChatApp>();
     ptr->self_holder = ptr;
 
-    auto cachePtr = Config::instance().chatCachePtr();
-    if (cachePtr)
-        ptr->mod_cache = reinterpret_cast<IModuleCache*>(static_cast<uintptr_t>(cachePtr));
+    ptr->mod_cache = &AppModuleCache::instance();
 
     ptr->chatId = agent::AgentManager::instance().allocId();
     agent::AgentManager::instance().setChatType(ptr->chatId, agent::ChatType::GROUP);
@@ -583,7 +583,7 @@ void app_on_input(void* p, const char* input_json)
                 return;
             }
             if (action == "stop") {
-                CHAT_LOG("[chat-in]", "stop request");
+                CHAT_INFO("[chat-in]", "stop request");
                 app->cancelled = true;
                 app->streaming = false;
                 app->input_queue.clear();
@@ -605,12 +605,12 @@ void app_on_input(void* p, const char* input_json)
         if (text_it != obj.end() && text_it->value().is_string()) {
             std::string text(text_it->value().as_string());
             if (text[0] == '/') {
-                CHAT_LOG("[chat-in]", "command: " << text);
+                CHAT_INFO("[chat-in]", "command: " << text);
                 auto arr = handleCommand(app, text);
                 for (auto& item : arr)
                     app->push_output(std::move(item));
             } else {
-                CHAT_LOG("[chat-in]", "text: \"" << text.substr(0, 20)
+                CHAT_INFO("[chat-in]", "text: \"" << text.substr(0, 20)
                          << (text.size() > 20 ? "..." : "") << "\""
                          << " (streaming=" << app->streaming << ")");
                 if (app->streaming) {

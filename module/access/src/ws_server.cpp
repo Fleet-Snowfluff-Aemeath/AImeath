@@ -1,6 +1,7 @@
 #include "ws_server.hpp"
 #include "config.hpp"
 #include <chrono>
+#include <algorithm>
 
 Session::Session(tcp::socket socket, Logger& logger,
                  IModuleCache& cache, ThreadPool* fallback_pool,
@@ -121,7 +122,7 @@ void Session::do_ws_accept()
             hs["id"] = self->session_id_;
             self->enqueue(boost::json::serialize(hs));
             self->buf_.clear();
-            self->schedule_ping();
+            self->start_ping();
             self->do_read_first_msg();
         }));
 }
@@ -401,7 +402,7 @@ void Session::process_legacy(const std::string& msg)
                                     auto& data = it->value().as_object();
                                     auto overIt = data.find("over");
                                     if (overIt != data.end() && overIt->value().is_bool() && overIt->value().as_bool()) {
-                                        Config::instance().fireAppStateNotify(self->app_name_, boost::json::serialize(data));
+                                        AppStateNotifier::instance().notify(self->app_name_, boost::json::serialize(data));
                                     }
                                 }
                             }
@@ -416,7 +417,7 @@ void Session::process_legacy(const std::string& msg)
                     boost::json::object doneState;
                     doneState["over"] = true;
                     doneState["reason"] = "session_closed";
-                    Config::instance().fireAppStateNotify(self->app_name_, boost::json::serialize(doneState));
+                    AppStateNotifier::instance().notify(self->app_name_, boost::json::serialize(doneState));
                 }
                 self->close_ws();
             } else {
@@ -472,7 +473,8 @@ std::string Session::call_app_process_and_notify(const std::string& input)
 void Session::do_cleanup()
 {
     closing_ = true;
-    ping_timer_.cancel();
+    if (ping_timer_id_)
+        ping_timer_.cancel(ping_timer_id_);
 
     bool stashed = false;
     if (!window_id_.empty() && app_ && !user_close_ && !app_is_done()) {
@@ -493,7 +495,7 @@ void Session::do_cleanup()
         doneState["session_id"] = session_id_;
         if (!window_id_.empty()) doneState["window_id"] = window_id_;
         if (!display_name_.empty()) doneState["display_name"] = display_name_;
-        Config::instance().fireAppStateNotify(app_name_, boost::json::serialize(doneState));
+        AppStateNotifier::instance().notify(app_name_, boost::json::serialize(doneState));
     }
     app_.reset();
 }
@@ -508,35 +510,28 @@ void Session::close_ws()
     }
 }
 
-void Session::schedule_ping()
+void Session::start_ping()
 {
     if (closing_) return;
     auto self = shared_from_this();
-    ping_timer_.expires_after(ping_interval_);
-    ping_timer_.async_wait(
-        asio::bind_executor(strand_, [self](beast::error_code ec) {
-            self->on_ping_timer(ec);
-        }));
-}
+    ping_timer_id_ = ping_timer_.setInterval(ping_interval_, [self]() {
+        asio::post(self->strand_, [self] {
+            if (self->closing_) return;
 
-void Session::on_ping_timer(beast::error_code ec)
-{
-    if (ec == asio::error::operation_aborted || closing_) return;
+            if (self->missed_pongs_ >= MAX_MISSED_PONGS) {
+                self->logger_.warn() << "[sess:" << self.get()
+                    << "] heartbeat lost after " << MAX_MISSED_PONGS << " missed pongs, closing";
+                self->close_ws();
+                return;
+            }
 
-    if (missed_pongs_ >= MAX_MISSED_PONGS) {
-        logger_.warn() << "[sess:" << this << "] heartbeat lost after "
-                       << MAX_MISSED_PONGS << " missed pongs, closing";
-        close_ws();
-        return;
-    }
-
-    missed_pongs_++;
-    if (ws_ && ws_->is_open()) {
-        ws_->async_ping("",
-            asio::bind_executor(strand_, [](beast::error_code) {}));
-    }
-
-    schedule_ping();
+            self->missed_pongs_++;
+            if (self->ws_ && self->ws_->is_open()) {
+                self->ws_->async_ping("",
+                    asio::bind_executor(self->strand_, [](beast::error_code) {}));
+            }
+        });
+    });
 }
 
 void Session::reset_heartbeat()
@@ -601,4 +596,195 @@ void Listener::on_accept(beast::error_code ec, tcp::socket socket)
 
     if (ec != asio::error::operation_aborted)
         do_accept();
+}
+
+// ============================================================
+//  SessionManager
+// ============================================================
+
+SessionManager& SessionManager::instance()
+{
+    static SessionManager mgr;
+    return mgr;
+}
+
+void SessionManager::registerSession(const std::string& appName, std::weak_ptr<Session> session)
+{
+    std::lock_guard<std::mutex> lock(mtx_);
+    sessions_[appName].push_back(std::move(session));
+}
+
+std::shared_ptr<Session> SessionManager::findSession(const std::string& appName, int index)
+{
+    std::lock_guard<std::mutex> lock(mtx_);
+    auto it = sessions_.find(appName);
+    if (it == sessions_.end())
+        return nullptr;
+    auto& vec = it->second;
+    vec.erase(std::remove_if(vec.begin(), vec.end(),
+        [](auto& w) {
+            auto s = w.lock();
+            return !s || !s->is_open();
+        }), vec.end());
+    if (vec.empty()) {
+        sessions_.erase(it);
+        return nullptr;
+    }
+    if (index < 0 || index >= (int)vec.size())
+        return nullptr;
+    return vec[index].lock();
+}
+
+std::vector<std::shared_ptr<Session>> SessionManager::findAllSessions(const std::string& appName)
+{
+    std::lock_guard<std::mutex> lock(mtx_);
+    std::vector<std::shared_ptr<Session>> result;
+    auto it = sessions_.find(appName);
+    if (it == sessions_.end())
+        return result;
+    auto& vec = it->second;
+    vec.erase(std::remove_if(vec.begin(), vec.end(),
+        [](auto& w) {
+            auto s = w.lock();
+            return !s || !s->is_open();
+        }), vec.end());
+    if (vec.empty()) {
+        sessions_.erase(it);
+        return result;
+    }
+    for (auto& w : vec) {
+        auto s = w.lock();
+        if (s) result.push_back(std::move(s));
+    }
+    return result;
+}
+
+void SessionManager::unregisterSession(const std::string& appName, Session* ptr)
+{
+    std::lock_guard<std::mutex> lock(mtx_);
+    auto it = sessions_.find(appName);
+    if (it == sessions_.end())
+        return;
+    auto& vec = it->second;
+    vec.erase(std::remove_if(vec.begin(), vec.end(),
+        [ptr](auto& w) {
+            auto s = w.lock();
+            return !s || s.get() == ptr;
+        }), vec.end());
+    if (vec.empty())
+        sessions_.erase(it);
+}
+
+std::vector<std::pair<std::string, int>> SessionManager::listSessions()
+{
+    std::lock_guard<std::mutex> lock(mtx_);
+    std::vector<std::pair<std::string, int>> result;
+    for (auto it = sessions_.begin(); it != sessions_.end(); ) {
+        auto& vec = it->second;
+        vec.erase(std::remove_if(vec.begin(), vec.end(),
+            [](auto& w) {
+                auto s = w.lock();
+                return !s || !s->is_open();
+            }), vec.end());
+        if (vec.empty()) {
+            it = sessions_.erase(it);
+        } else {
+            for (int i = 0; i < (int)vec.size(); ++i)
+                result.emplace_back(it->first, i);
+            ++it;
+        }
+    }
+    return result;
+}
+
+void SessionManager::registerWindow(const std::string& windowId, const std::string& sessionId, const std::string& appName)
+{
+    std::lock_guard<std::mutex> lock(mtx_);
+    windowMap_[windowId] = WinInfo{sessionId, appName};
+}
+
+void SessionManager::unregisterWindow(const std::string& windowId)
+{
+    std::lock_guard<std::mutex> lock(mtx_);
+    windowMap_.erase(windowId);
+}
+
+void SessionManager::stashApp(const std::string& windowId, AppPtr app, AppModule mod, std::string appName)
+{
+    if (windowId.empty()) return;
+    std::lock_guard<std::mutex> lock(mtx_);
+    StashedApp s;
+    s.app = std::move(app);
+    s.mod = std::move(mod);
+    s.appName = std::move(appName);
+    s.at = std::chrono::steady_clock::now();
+    stashedApps_[windowId] = std::move(s);
+}
+
+bool SessionManager::restoreApp(const std::string& windowId, AppPtr& outApp, AppModule& outMod, std::string& outAppName)
+{
+    if (windowId.empty()) return false;
+    std::lock_guard<std::mutex> lock(mtx_);
+    auto it = stashedApps_.find(windowId);
+    if (it == stashedApps_.end()) return false;
+    if (stashTtlSec_ > 0 && std::chrono::steady_clock::now() - it->second.at > std::chrono::seconds(stashTtlSec_)) {
+        stashedApps_.erase(it);
+        return false;
+    }
+    outApp = std::move(it->second.app);
+    outMod = std::move(it->second.mod);
+    outAppName = std::move(it->second.appName);
+    stashedApps_.erase(it);
+    return true;
+}
+
+void SessionManager::removeStashedApp(const std::string& windowId)
+{
+    if (windowId.empty()) return;
+    std::lock_guard<std::mutex> lock(mtx_);
+    stashedApps_.erase(windowId);
+}
+
+boost::json::array SessionManager::listActiveWindows()
+{
+    std::lock_guard<std::mutex> lock(mtx_);
+    boost::json::array result;
+    for (auto it = sessions_.begin(); it != sessions_.end(); ) {
+        auto& vec = it->second;
+        vec.erase(std::remove_if(vec.begin(), vec.end(),
+            [](auto& w) {
+                auto s = w.lock();
+                return !s || !s->is_open();
+            }), vec.end());
+        if (vec.empty()) {
+            it = sessions_.erase(it);
+            continue;
+        }
+        auto& appName = it->first;
+        int idx = 0;
+        for (auto& w : vec) {
+            auto s = w.lock();
+            if (!s) continue;
+            boost::json::object entry;
+            entry["window_id"] = s->window_id();
+            entry["session_id"] = s->session_id();
+            entry["app"] = appName;
+            entry["instance"] = idx++;
+            if (!s->display_name().empty())
+                entry["display_name"] = s->display_name();
+            result.push_back(std::move(entry));
+        }
+        ++it;
+    }
+    return result;
+}
+
+// ============================================================
+//  AppStateNotifier
+// ============================================================
+
+AppStateNotifier& AppStateNotifier::instance()
+{
+    static AppStateNotifier notifier;
+    return notifier;
 }

@@ -13,6 +13,8 @@
 class AppModuleCache : private boost::noncopyable, public IModuleCache
 {
 public:
+    static AppModuleCache& instance();
+
     AppModule load(const std::string& name) override;
     void evict(const std::string& name) override;
     void clear() override;

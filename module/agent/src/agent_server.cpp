@@ -14,6 +14,7 @@
 #include "llm_utils.hpp"
 #include "config.hpp"
 #include "ws_server.hpp"
+#include "app_mod.hpp"
 #include "tool_registry.hpp"
 
 namespace asio = boost::asio;
@@ -550,9 +551,7 @@ boost::json::value AgentServer::executeTool(const std::string& name, const boost
 
         bool found = false;
         if (AppManager::instance().getAppState(appName).is_null()) {
-            auto mod = Config::instance().chatCachePtr()
-                ? reinterpret_cast<IModuleCache*>(static_cast<uintptr_t>(Config::instance().chatCachePtr()))->load(appName)
-                : AppModule{};
+            auto mod = AppModuleCache::instance().load(appName);
             if (mod) {
                 auto handle = mod.create("{}");
                 if (handle) {
@@ -739,7 +738,7 @@ void AgentServer::injectStateIntoHistory(const std::string& appName, const boost
     std::lock_guard<std::mutex> lock(mtx_);
     boost::json::object sysMsg;
     sysMsg["role"] = "system";
-    std::string content = "应用 " + appName + " 状态变�? " + boost::json::serialize(state);
+    std::string content = "应用 " + appName + " 状态变�? " + boost::json::serialize(state);
     sysMsg["content"] = std::move(content);
     history_.push_back(std::move(sysMsg));
     AGENT_LOG("[state]", "injected state for " << appName << " into history");

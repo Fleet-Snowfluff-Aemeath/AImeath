@@ -17,6 +17,7 @@ file(GLOB SRC_SOURCES CONFIGURE_DEPENDS
 )
 add_library(llm SHARED ${SRC_SOURCES})
 target_include_directories(llm PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_include_directories(llm PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../core/include)
 target_link_libraries(llm PUBLIC OpenSSL::SSL OpenSSL::Crypto Boost::json)
 
 # 功能测试 && 性能测试

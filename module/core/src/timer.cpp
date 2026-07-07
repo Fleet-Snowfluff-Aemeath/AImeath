@@ -1,18 +1,16 @@
 #include "timer.hpp"
 
-Timer::Timer(ThreadPool& pool)
-    : m_io(pool.io_context())
+Timer::Timer(boost::asio::io_context& io)
+    : m_io(io)
 {
-    m_state->pool = &pool;
 }
 
 Timer::~Timer()
 {
-    auto state = std::move(m_state);
     std::unordered_map<TimerId, TimerEntry> timers;
     {
-        std::lock_guard<std::mutex> lock(state->mtx);
-        timers = std::move(state->timers);
+        std::lock_guard<std::mutex> lock(m_mtx);
+        timers = std::move(m_timers);
     }
     for (auto& [_, entry] : timers)
         entry.timer->cancel();
@@ -22,8 +20,8 @@ Timer::TimerId Timer::addTimer(std::shared_ptr<boost::asio::steady_timer> timer)
 {
     auto id = m_next_id.fetch_add(1);
     {
-        std::lock_guard<std::mutex> lock(m_state->mtx);
-        m_state->timers[id] = TimerEntry{std::move(timer), nullptr};
+        std::lock_guard<std::mutex> lock(m_mtx);
+        m_timers[id] = TimerEntry{std::move(timer), nullptr};
     }
     return id;
 }
@@ -32,18 +30,15 @@ Timer::TimerId Timer::setTimeoutImpl(std::shared_ptr<boost::asio::steady_timer> 
                                       std::function<void()> callback)
 {
     auto id = addTimer(timer);
-    std::weak_ptr<TimerState> w_state = m_state;
-    timer->async_wait([id, cb = std::move(callback), w_state](const boost::system::error_code& ec) mutable {
+    timer->async_wait([this, id, cb = std::move(callback)](const boost::system::error_code& ec) mutable {
         if (ec) return;
-        auto state = w_state.lock();
-        if (!state) return;
         bool should_call = false;
         {
-            std::lock_guard<std::mutex> lock(state->mtx);
-            should_call = (state->timers.erase(id) > 0);
+            std::lock_guard<std::mutex> lock(m_mtx);
+            should_call = (m_timers.erase(id) > 0);
         }
-        if (should_call && state->pool)
-            state->pool->submit(std::move(cb));
+        if (should_call)
+            cb();
     });
     return id;
 }
@@ -64,39 +59,39 @@ Timer::TimerId Timer::setTimeoutAt(const std::chrono::steady_clock::time_point& 
 
 Timer::TimerId Timer::setInterval(std::chrono::milliseconds interval, std::function<void()> callback)
 {
-    auto id = m_next_id.fetch_add(1);
     auto timer = std::make_shared<boost::asio::steady_timer>(m_io);
     timer->expires_after(interval);
 
-    auto loop = std::make_shared<std::function<void(const boost::system::error_code&)>>();
-    std::weak_ptr<std::function<void(const boost::system::error_code&)>> weak_loop = loop;
-    std::weak_ptr<TimerState> w_state = m_state;
+    auto id = m_next_id.fetch_add(1);
+    auto alive = std::make_shared<bool>(true);
+    {
+        std::lock_guard<std::mutex> lock(m_mtx);
+        m_timers[id] = TimerEntry{timer, alive};
+    }
 
-    *loop = [id, interval, cb = std::move(callback), weak_loop, w_state](const boost::system::error_code& ec) {
+    std::weak_ptr<bool> weak_alive = alive;
+    std::function<void(const boost::system::error_code&)> tick;
+    tick = [this, id, interval, cb = std::move(callback), weak_alive, &tick]
+           (const boost::system::error_code& ec)
+    {
         if (ec) return;
-        auto state = w_state.lock();
-        if (!state) return;
-
-        if (state->pool)
-            state->pool->submit(cb);
-
-        std::shared_ptr<boost::asio::steady_timer> timer;
+        if (auto a = weak_alive.lock())
         {
-            std::lock_guard<std::mutex> lock(state->mtx);
-            auto it = state->timers.find(id);
-            if (it == state->timers.end()) return;
-            timer = it->second.timer;
+            cb();
+
+            std::shared_ptr<boost::asio::steady_timer> t;
+            {
+                std::lock_guard<std::mutex> lock(m_mtx);
+                auto it = m_timers.find(id);
+                if (it == m_timers.end()) return;
+                t = it->second.timer;
+            }
+            t->expires_after(interval);
+            t->async_wait(tick);
         }
-        timer->expires_after(interval);
-        if (auto locked = weak_loop.lock())
-            timer->async_wait(*locked);
     };
 
-    {
-        std::lock_guard<std::mutex> lock(m_state->mtx);
-        m_state->timers[id] = TimerEntry{timer, loop};
-    }
-    timer->async_wait(*loop);
+    timer->async_wait(tick);
     return id;
 }
 
@@ -104,11 +99,11 @@ bool Timer::cancel(TimerId id)
 {
     std::shared_ptr<boost::asio::steady_timer> timer;
     {
-        std::lock_guard<std::mutex> lock(m_state->mtx);
-        auto it = m_state->timers.find(id);
-        if (it == m_state->timers.end()) return false;
+        std::lock_guard<std::mutex> lock(m_mtx);
+        auto it = m_timers.find(id);
+        if (it == m_timers.end()) return false;
         timer = std::move(it->second.timer);
-        m_state->timers.erase(it);
+        m_timers.erase(it);
     }
     timer->cancel();
     return true;
@@ -116,6 +111,6 @@ bool Timer::cancel(TimerId id)
 
 bool Timer::exists(TimerId id) const
 {
-    std::lock_guard<std::mutex> lock(m_state->mtx);
-    return m_state->timers.find(id) != m_state->timers.end();
+    std::lock_guard<std::mutex> lock(m_mtx);
+    return m_timers.find(id) != m_timers.end();
 }

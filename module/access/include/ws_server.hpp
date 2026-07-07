@@ -4,7 +4,7 @@
  * ws_server — 异步 WebSocket 服务端基础设施
  *
  * 提供 Session（连接管理 + 路由 + 消息循环）和 Listener（async_accept）。
- * 依赖 core/app_mod（模块接口）、threadmgr（线程池）、logger、wsutil。
+ * 依赖 core/app_mod（模块接口）、threadmgr（线程池）、logger、toolbox。
  */
 
 #include <string>
@@ -26,7 +26,8 @@
 #include "iface_mod.hpp"
 #include "threadmgr.hpp"
 #include "logger.hpp"
-#include "wsutil.hpp"
+#include "toolbox.hpp"
+#include "timer.hpp"
 
 namespace asio  = boost::asio;
 namespace beast = boost::beast;
@@ -88,6 +89,27 @@ private:
     int stashTtlSec_{0};
 };
 
+class AppStateNotifier : private boost::noncopyable
+{
+public:
+    static AppStateNotifier& instance();
+
+    void subscribe(void (*fn)(const char* app, const char* state, void* ctx), void* ctx)
+    {
+        fn_ = fn;
+        ctx_ = ctx;
+    }
+
+    void notify(const std::string& app, const std::string& state) const
+    {
+        if (fn_) fn_(app.c_str(), state.c_str(), ctx_);
+    }
+
+private:
+    void (*fn_)(const char*, const char*, void*) = nullptr;
+    void* ctx_ = nullptr;
+};
+
 class Session : public std::enable_shared_from_this<Session>
 {
 public:
@@ -124,8 +146,7 @@ private:
     bool app_is_done() const;
     void close_ws();
     void do_cleanup();
-    void schedule_ping();
-    void on_ping_timer(beast::error_code ec);
+    void start_ping();
     void reset_heartbeat();
 
     std::optional<beast::tcp_stream>                          stream_;
@@ -153,7 +174,8 @@ private:
     bool user_close_ = false;
     bool close_after_write_ = false;
 
-    asio::steady_timer ping_timer_;
+    Timer ping_timer_;
+    Timer::TimerId ping_timer_id_{0};
     std::chrono::seconds ping_interval_;
     int missed_pongs_{0};
     static constexpr int MAX_MISSED_PONGS = 2;

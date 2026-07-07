@@ -1,7 +1,7 @@
 #include <benchmark/benchmark.h>
-#include "wsutil.hpp"
+#include "toolbox.hpp"
 
-static void BM_NetConnParseUrl(benchmark::State& state)
+static void BM_ToolboxParseUrl(benchmark::State& state)
 {
     for (auto _ : state)
     {
@@ -9,9 +9,9 @@ static void BM_NetConnParseUrl(benchmark::State& state)
             parseUrl("http://example.com:8080/path/to/resource"));
     }
 }
-BENCHMARK(BM_NetConnParseUrl);
+BENCHMARK(BM_ToolboxParseUrl);
 
-static void BM_NetConnParseWsUrl(benchmark::State& state)
+static void BM_ToolboxParseWsUrl(benchmark::State& state)
 {
     for (auto _ : state)
     {
@@ -19,6 +19,6 @@ static void BM_NetConnParseWsUrl(benchmark::State& state)
             parseUrl("ws://chat.example.com:9000/room?id=123"));
     }
 }
-BENCHMARK(BM_NetConnParseWsUrl);
+BENCHMARK(BM_ToolboxParseWsUrl);
 
 BENCHMARK_MAIN();

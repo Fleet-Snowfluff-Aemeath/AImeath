@@ -30,7 +30,7 @@ target_include_directories(chat PRIVATE
     ${PROJ_ROOT}/module/agent/include
 )
 
-target_link_libraries(chat PRIVATE Boost::json OpenSSL::SSL OpenSSL::Crypto core llm agent)
+target_link_libraries(chat PRIVATE Boost::json OpenSSL::SSL OpenSSL::Crypto core llm agent access)
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 find_package(GTest REQUIRED)

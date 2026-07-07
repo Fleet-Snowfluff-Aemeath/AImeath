@@ -11,7 +11,7 @@ C++17 库，提供线程安全的线程池、定时器、日志、事件管理�
 - **EventManager** —— 发布-订阅模式，基于 `boost::signals2`。O(1) 取消订阅，`subscriberCount` 返回 0 时自动清理空信号，支持 `cleanup()` 惰性压缩。异常隔离，锁内复制信号、锁外执行回调。
 - **NetConn** —— 异步 HTTP/WebSocket 客户端，基于 ThreadPool 的 io_context。支持 GET/POST/WS connect/send/close。WebSocket 支持自动重连（指数退避，最多 10 次）。状态机正确更新 CONNECTED/DISCONNECTED。
 - **ws_server** —— 异步 WebSocket 服务端基础设施。Session 管理单连接生命周期（HTTP Upgrade → 路由 → 消息循环），Listener 提供 async_accept 循环。支持异步/遗留双模 app，写队列串行化 async_write。
-- **wsutil** —— URL 解析（基于 `boost::url`，含 query string）和 JSON 工具函数（`jsonParseStr`/`jsonParseInt` 基于 `boost::json::parse` + `try_value_to`）。
+- **toolbox** —— URL 解析（基于 `boost::url`，含 query string）和 JSON 工具函数（`jsonParseStr`/`jsonParseInt` 基于 `boost::json::parse` + `try_value_to`）。
 ## 目录结构
 
 ```
@@ -21,7 +21,7 @@ C++17 库，提供线程安全的线程池、定时器、日志、事件管理�
 │   ├── logger.hpp
 │   ├── eventmgr.hpp
 │   ├── netconn.hpp
-│   ├── wsutil.hpp
+│   ├── toolbox.hpp
 │   └── ws_server.hpp
 ├── src/             源文件实现（编译为 libcore.so）
 ├── test/            Google Test 单元测试（6 文件，83 用例）

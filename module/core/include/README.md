@@ -131,7 +131,7 @@ conn.wsClose();
 
 ---
 
-### wsutil.hpp
+### toolbox.hpp
 
 **工具函数** —— URL 解析和 JSON 辅助函数。
 

@@ -9,7 +9,7 @@
 TEST(TimerTest, SetTimeoutFiresOnce)
 {
     ThreadPool pool(2);
-    Timer timer(pool);
+    Timer timer(pool.io_context());
     std::atomic<int> count{0};
     timer.setTimeout(std::chrono::milliseconds(50), [&]() { count.fetch_add(1); });
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -19,7 +19,7 @@ TEST(TimerTest, SetTimeoutFiresOnce)
 TEST(TimerTest, SetIntervalFiresMultiple)
 {
     ThreadPool pool(2);
-    Timer timer(pool);
+    Timer timer(pool.io_context());
     std::atomic<int> count{0};
     auto id = timer.setInterval(std::chrono::milliseconds(50), [&]() {
         count.fetch_add(1);
@@ -34,7 +34,7 @@ TEST(TimerTest, SetIntervalFiresMultiple)
 TEST(TimerTest, CancelPreventsFire)
 {
     ThreadPool pool(2);
-    Timer timer(pool);
+    Timer timer(pool.io_context());
     std::atomic<int> count{0};
     auto id = timer.setTimeout(std::chrono::milliseconds(100), [&]() {
         count.fetch_add(1);
@@ -47,7 +47,7 @@ TEST(TimerTest, CancelPreventsFire)
 TEST(TimerTest, ExistsBeforeAndAfter)
 {
     ThreadPool pool(2);
-    Timer timer(pool);
+    Timer timer(pool.io_context());
     auto id = timer.setTimeout(std::chrono::milliseconds(200), []() {});
     EXPECT_TRUE(timer.exists(id));
     std::this_thread::sleep_for(std::chrono::milliseconds(300));
@@ -57,7 +57,7 @@ TEST(TimerTest, ExistsBeforeAndAfter)
 TEST(TimerTest, MultipleTimersFireInOrder)
 {
     ThreadPool pool(2);
-    Timer timer(pool);
+    Timer timer(pool.io_context());
     std::vector<int> fired;
     std::mutex mtx;
     timer.setTimeout(std::chrono::milliseconds(100), [&]() {
@@ -82,7 +82,7 @@ TEST(TimerTest, MultipleTimersFireInOrder)
 TEST(TimerTest, SetTimeoutAtFiresOnce)
 {
     ThreadPool pool(2);
-    Timer timer(pool);
+    Timer timer(pool.io_context());
     std::atomic<int> count{0};
     auto expiry = std::chrono::steady_clock::now() + std::chrono::milliseconds(50);
     timer.setTimeoutAt(expiry, [&]() { count.fetch_add(1); });
@@ -93,7 +93,7 @@ TEST(TimerTest, SetTimeoutAtFiresOnce)
 TEST(TimerTest, SetTimeoutAtPastExpiryFiresImmediately)
 {
     ThreadPool pool(2);
-    Timer timer(pool);
+    Timer timer(pool.io_context());
     std::atomic<int> count{0};
     auto past = std::chrono::steady_clock::now() - std::chrono::milliseconds(10);
     timer.setTimeoutAt(past, [&]() { count.fetch_add(1); });
@@ -104,7 +104,7 @@ TEST(TimerTest, SetTimeoutAtPastExpiryFiresImmediately)
 TEST(TimerTest, SetTimeoutAtCancel)
 {
     ThreadPool pool(2);
-    Timer timer(pool);
+    Timer timer(pool.io_context());
     std::atomic<int> count{0};
     auto expiry = std::chrono::steady_clock::now() + std::chrono::milliseconds(100);
     auto id = timer.setTimeoutAt(expiry, [&]() { count.fetch_add(1); });
@@ -116,7 +116,7 @@ TEST(TimerTest, SetTimeoutAtCancel)
 TEST(TimerTest, SetTimeoutAtOrderWithSetTimeout)
 {
     ThreadPool pool(2);
-    Timer timer(pool);
+    Timer timer(pool.io_context());
     std::vector<int> fired;
     std::mutex mtx;
 
@@ -138,7 +138,7 @@ TEST(TimerTest, SetTimeoutAtOrderWithSetTimeout)
 TEST(TimerTest, ZeroDelayFiresImmediately)
 {
     ThreadPool pool(2);
-    Timer timer(pool);
+    Timer timer(pool.io_context());
     std::atomic<int> count{0};
     timer.setTimeout(std::chrono::milliseconds(0), [&]() { count.fetch_add(1); });
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
@@ -148,14 +148,14 @@ TEST(TimerTest, ZeroDelayFiresImmediately)
 TEST(TimerTest, CancelNonExistentTimer)
 {
     ThreadPool pool(2);
-    Timer timer(pool);
+    Timer timer(pool.io_context());
     EXPECT_FALSE(timer.cancel(99999));
 }
 
 TEST(TimerTest, CancelAlreadyFired)
 {
     ThreadPool pool(2);
-    Timer timer(pool);
+    Timer timer(pool.io_context());
     std::atomic<int> count{0};
     auto id = timer.setTimeout(std::chrono::milliseconds(20), [&]() { count.fetch_add(1); });
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -166,7 +166,7 @@ TEST(TimerTest, CancelAlreadyFired)
 TEST(TimerTest, CancelPeriodicMidExecution)
 {
     ThreadPool pool(2);
-    Timer timer(pool);
+    Timer timer(pool.io_context());
     std::atomic<int> count{0};
     auto id = timer.setInterval(std::chrono::milliseconds(30), [&]() {
         count.fetch_add(1);
@@ -181,7 +181,7 @@ TEST(TimerTest, CancelPeriodicMidExecution)
 TEST(TimerTest, CallbackThatThrows)
 {
     ThreadPool pool(2);
-    Timer timer(pool);
+    Timer timer(pool.io_context());
     std::atomic<int> count{0};
     timer.setTimeout(std::chrono::milliseconds(20), [&]() {
         count.fetch_add(1);
@@ -195,7 +195,7 @@ TEST(TimerTest, CallbackThatThrows)
 TEST(TimerTest, ExistsAfterCancel)
 {
     ThreadPool pool(2);
-    Timer timer(pool);
+    Timer timer(pool.io_context());
     auto id = timer.setTimeout(std::chrono::milliseconds(200), []() {});
     EXPECT_TRUE(timer.exists(id));
     timer.cancel(id);
@@ -205,7 +205,7 @@ TEST(TimerTest, ExistsAfterCancel)
 TEST(TimerTest, PeriodicCallbackThatThrows)
 {
     ThreadPool pool(2);
-    Timer timer(pool);
+    Timer timer(pool.io_context());
     std::atomic<int> count{0};
     auto id = timer.setInterval(std::chrono::milliseconds(30), [&]() {
         count.fetch_add(1);
@@ -220,7 +220,7 @@ TEST(TimerTest, PeriodicCallbackThatThrows)
 TEST(TimerTest, ManyTimersStress)
 {
     ThreadPool pool(4);
-    Timer timer(pool);
+    Timer timer(pool.io_context());
     std::atomic<int> count{0};
     constexpr int N = 200;
     for (int i = 0; i < N; ++i)
@@ -234,7 +234,7 @@ TEST(TimerTest, ManyTimersStress)
 TEST(TimerTest, ConcurrentCancelStress)
 {
     ThreadPool pool(4);
-    Timer timer(pool);
+    Timer timer(pool.io_context());
     std::atomic<int> fired{0};
     constexpr int N = 100;
     for (int iter = 0; iter < 5; ++iter)
@@ -254,7 +254,7 @@ TEST(TimerTest, ConcurrentCancelStress)
 TEST(TimerTest, RapidCancelStress)
 {
     ThreadPool pool(4);
-    Timer timer(pool);
+    Timer timer(pool.io_context());
     std::atomic<int> fired{0}, cancelled{0};
     constexpr int N = 500;
     std::vector<uint64_t> ids;

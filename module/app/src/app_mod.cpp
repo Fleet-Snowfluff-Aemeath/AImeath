@@ -3,6 +3,12 @@
 #include <iostream>
 #include <boost/dll.hpp>
 
+AppModuleCache& AppModuleCache::instance()
+{
+    static AppModuleCache cache;
+    return cache;
+}
+
 static boost::dll::shared_library try_load(const std::string& name)
 {
     std::string soname = "lib" + name + ".so";

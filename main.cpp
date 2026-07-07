@@ -1,10 +1,10 @@
 /**
- * AImeath �?统一 WebSocket 服务端（全异步架构）
+ * AImeath �?统一 WebSocket 服务端（全异步架构）
  *
- * 端口�?config.json �?"port" 字段读取，默�?3001�?
- * 每个连接�?shared_ptr<Session> 管理生命周期�?
- * 通过 async_read / async_write 处理 WebSocket 消息�?
- * Session / Listener 定义�?module/core/include/ws_server.hpp
+ * 端口�?config.json �?"port" 字段读取，默�?3001�?
+ * 每个连接�?shared_ptr<Session> 管理生命周期�?
+ * 通过 async_read / async_write 处理 WebSocket 消息�?
+ * Session / Listener 定义�?module/core/include/ws_server.hpp
  */
 
 #include <iostream>
@@ -46,14 +46,11 @@ int main()
     if (max_conn > 0) {
         fallback_pool.set_max_queue_size(static_cast<size_t>(max_conn) / 10);
     }
-    AppModuleCache cache;
+    AppManager::instance().init(&AppModuleCache::instance());
 
-    AppManager::instance().init(&cache);
-
-    Config::instance().setChatCachePtr(reinterpret_cast<uintptr_t>(&cache));
     SessionManager::instance().setStashTtlSec(stash_ttl);
 
-    auto listener = std::make_shared<Listener>(io, logger, cache, &fallback_pool, port);
+    auto listener = std::make_shared<Listener>(io, logger, AppModuleCache::instance(), &fallback_pool, port);
     if (max_conn > 0)
         listener->set_max_connections(max_conn);
     listener->run();
