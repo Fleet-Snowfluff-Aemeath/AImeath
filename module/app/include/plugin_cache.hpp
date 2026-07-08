@@ -8,13 +8,11 @@
 #include <boost/noncopyable.hpp>
 
 #include "plugin.hpp"
-#include "logger.hpp"
 
 class PluginCache : private boost::noncopyable, public IPluginCache
 {
 public:
     static PluginCache& instance();
-    static void setLogger(Logger& logger);
 
     PluginDescriptor load(const std::string& name) override;
     void evict(const std::string& name) override;

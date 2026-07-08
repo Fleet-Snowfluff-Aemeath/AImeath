@@ -1,19 +1,12 @@
 #include "plugin_cache.hpp"
 #include <dlfcn.h>
+#include <iostream>
 #include <boost/dll.hpp>
-#include <boost/json.hpp>
-
-static Logger* s_pluginLogger = nullptr;
 
 PluginCache& PluginCache::instance()
 {
     static PluginCache cache;
     return cache;
-}
-
-void PluginCache::setLogger(Logger& logger)
-{
-    s_pluginLogger = &logger;
 }
 
 boost::dll::shared_library PluginCache::tryLoad(const std::string& name)
@@ -24,8 +17,6 @@ boost::dll::shared_library PluginCache::tryLoad(const std::string& name)
         boost::system::error_code ec;
         boost::dll::shared_library lib(path, ec);
         if (!ec) return lib;
-        if (ec.value() != boost::system::errc::no_such_file_or_directory)
-            if (s_pluginLogger) s_pluginLogger->debug("plugin") << "tryLoad " << path << ": " << ec.message();
         return {};
     };
 
@@ -51,7 +42,6 @@ boost::dll::shared_library PluginCache::tryLoad(const std::string& name)
         if (lib) return lib;
     }
 
-    if (s_pluginLogger) s_pluginLogger->debug("plugin") << "tryLoad failed for " << soname;
     return {};
 }
 
@@ -61,16 +51,14 @@ PluginDescriptor PluginCache::load(const std::string& name)
     auto it = m_cache.find(name);
     if (it != m_cache.end())
     {
-        if (s_pluginLogger) s_pluginLogger->debug("plugin") << "cache hit: " << name;
         it->second.mod.loaded_ = true;
         return it->second.mod;
     }
 
-    if (s_pluginLogger) s_pluginLogger->debug("plugin") << "loading: " << name;
     auto lib = tryLoad(name);
     if (!lib)
     {
-        if (s_pluginLogger) s_pluginLogger->error("plugin") << "failed to load lib" << name << ".so";
+        std::cerr << "failed to load lib" << name << ".so" << std::endl;
         return {};
     }
 
@@ -86,13 +74,13 @@ PluginDescriptor PluginCache::load(const std::string& name)
     }
     catch (const boost::system::system_error& e)
     {
-        if (s_pluginLogger) s_pluginLogger->error("plugin") << "symbols not found in lib" << name << ".so: " << e.what();
+        std::cerr << "symbols not found in lib" << name << ".so: " << e.what() << std::endl;
         return {};
     }
 
     if (!m.create_ || !m.destroy_ || !m.process_ || !m.is_done_)
     {
-        if (s_pluginLogger) s_pluginLogger->error("plugin") << "required symbols missing in lib" << name << ".so";
+        std::cerr << "required symbols not found in lib" << name << ".so" << std::endl;
         return {};
     }
 
@@ -104,8 +92,6 @@ PluginDescriptor PluginCache::load(const std::string& name)
     }
 
     m.async_ = (m.on_input_ && m.set_output_);
-
-    if (s_pluginLogger) s_pluginLogger->info("plugin") << name << " loaded (async=" << m.async_ << ")";
 
     m_cache.emplace(std::piecewise_construct,
                     std::forward_as_tuple(name),

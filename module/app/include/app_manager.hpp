@@ -12,7 +12,6 @@
 
 #include "plugin.hpp"
 #include "eventmgr.hpp"
-#include "logger.hpp"
 
 class Session;
 
@@ -21,7 +20,13 @@ class AppManager : private boost::noncopyable
 public:
     static AppManager& instance();
 
-    void init(IPluginCache* cache, Logger* logger);
+    void init(IPluginCache* cache);
+
+    bool openApp(const std::string& appName, const std::string& configJson);
+    bool closeApp(const std::string& appName);
+    boost::json::value controlApp(const std::string& appName, const std::string& commandJson);
+    boost::json::value getAppState(const std::string& appName);
+    boost::json::array listApps();
 
     using StateCallback = std::function<void(const std::string& appName, const boost::json::value& state)>;
     uint64_t subscribe(StateCallback cb);
@@ -29,11 +34,14 @@ public:
 
     void notifyStateChange(const std::string& appName, const boost::json::value& state);
 
+    void registerWindow(const std::string& windowId, const std::string& sessionId, const std::string& appName);
+    void unregisterWindow(const std::string& windowId);
+    boost::json::array listActiveWindows();
+
 private:
     AppManager() = default;
 
     IPluginCache* cache_ = nullptr;
-    Logger* logger_ = nullptr;
     std::mutex mtx_;
 
     struct SubEntry {

@@ -672,9 +672,12 @@ int app_is_done(void* p)
     return static_cast<ChatApp*>(p)->done ? 1 : 0;
 }
 
-char* app_get_info()
+char* app_get_info(void)
 {
-    return strdup(R"({"name":"chat","display_name":"聊天","type":"chat"})");
+    const char* json = "{\"name\":\"chat\",\"display_name\":\"聊天\",\"type\":\"chat\"}";
+    char* buf = (char*)malloc(strlen(json) + 1);
+    if (buf) memcpy(buf, json, strlen(json) + 1);
+    return buf;
 }
 
 } // extern "C"

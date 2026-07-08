@@ -2,12 +2,8 @@
 
 #include <string>
 #include <vector>
-#include <functional>
-#include <unordered_map>
 #include <boost/json.hpp>
 #include <yaml-cpp/yaml.h>
-
-#include "plugin_cache.hpp"
 
 namespace agent {
 
@@ -58,23 +54,5 @@ inline boost::json::array loadToolsFromYaml(const std::string& yamlPath) {
 
     return tools;
 }
-
-class ToolRegistry {
-public:
-    static ToolRegistry& instance();
-
-    void registerApp(const std::string& appName, const AppInfo& info);
-    boost::json::value execute(const std::string& appName, const std::string& toolName, const boost::json::value& args);
-    boost::json::array toolDefs() const;
-
-    using ToolHandler = std::function<boost::json::value(const boost::json::value& args)>;
-    void setHandler(const std::string& name, ToolHandler handler);
-    boost::json::object buildToolDef(const std::string& name, const std::string& desc, const boost::json::object& params) const;
-
-private:
-    ToolRegistry() = default;
-    std::unordered_map<std::string, AppInfo> appInfos_;
-    std::unordered_map<std::string, ToolHandler> handlers_;
-};
 
 } // namespace agent

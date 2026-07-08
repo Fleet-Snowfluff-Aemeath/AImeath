@@ -38,7 +38,7 @@ public:
             {
                 m_ss << '\n';
                 std::lock_guard<std::mutex> lock(*m_mtx);
-                *m_os << m_ss.str() << std::flush;
+                *m_os << m_ss.str();
             }
         }
 

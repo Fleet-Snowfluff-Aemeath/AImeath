@@ -248,9 +248,12 @@ char* app_process(void* p, const char* input_json)
     }
 }
 
-char* app_get_info()
+char* app_get_info(void)
 {
-    return strdup(R"({"name":"terminal","display_name":"终端","type":"terminal"})");
+    const char* json = "{\"name\":\"terminal\",\"display_name\":\"终端\",\"type\":\"terminal\"}";
+    char* buf = (char*)malloc(strlen(json) + 1);
+    if (buf) memcpy(buf, json, strlen(json) + 1);
+    return buf;
 }
 
 } // extern "C"

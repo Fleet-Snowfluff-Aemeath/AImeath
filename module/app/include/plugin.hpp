@@ -25,7 +25,6 @@ void  app_set_io_context(void* app, void* io_context);
 
 char* app_process(void* app, const char* input_json);
 void  app_free_string(char* str);
-
 char* app_get_info(void);
 
 #ifdef __cplusplus

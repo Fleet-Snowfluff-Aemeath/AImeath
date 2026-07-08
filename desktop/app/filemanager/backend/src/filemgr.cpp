@@ -168,9 +168,12 @@ char* app_process(void*, const char* input_json)
     }
 }
 
-char* app_get_info()
+char* app_get_info(void)
 {
-    return strdup(R"({"name":"filemanager","display_name":"文件管理器","type":"filemanager"})");
+    const char* json = "{\"name\":\"filemanager\",\"display_name\":\"文件管理器\",\"type\":\"filemanager\"}";
+    char* buf = (char*)malloc(strlen(json) + 1);
+    if (buf) memcpy(buf, json, strlen(json) + 1);
+    return buf;
 }
 
 } // extern "C"

@@ -81,16 +81,12 @@ private:
     std::shared_ptr<::LlmClient> currentStream_;
     std::unordered_map<std::string, ToolDef> tools_;
 
-    void registerHandlers();
-
     bool done_ = false;
 
     uint64_t subHandle_ = 0;
     void ensureSubscribed();
     void onAppStateChange(const std::string& appName, const boost::json::value& state);
     void injectStateIntoHistory(const std::string& appName, const boost::json::value& state);
-
-    std::unordered_map<std::string, ToolHandler> handlers_;
 };
 
 } // namespace agent
