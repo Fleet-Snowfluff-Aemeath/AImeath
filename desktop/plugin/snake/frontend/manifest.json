@@ -1,0 +1,37 @@
+{
+  "name": "snake",
+  "display_name": "贪吃蛇",
+  "type": "game",
+  "library": "libsnake.so",
+  "icon": "/res/C220748556D18ADBC61177B1A5A8151D.png",
+  "frontend": {
+    "size": 20,
+    "clickGame": false,
+    "styles": {
+      "O": { "background": "#4f4" },
+      "#": { "background": "#2a2" },
+      "$": { "background": "red", "borderRadius": "50%" },
+      " ": { "background": "#111" }
+    }
+  },
+  "tools": [
+    {
+      "name": "control_plugin",
+      "description": "Control snake direction. 0=up 1=down 2=left 3=right",
+      "handler": "game_tick",
+      "params": {
+        "type": "object",
+        "properties": {
+          "value": { "type": "integer", "description": "Direction value" }
+        },
+        "required": ["value"]
+      }
+    },
+    {
+      "name": "get_plugin_state",
+      "description": "Get current snake game state",
+      "handler": "game_state",
+      "params": { "type": "object", "properties": {} }
+    }
+  ]
+}

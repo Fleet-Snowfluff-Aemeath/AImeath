@@ -8,7 +8,7 @@
 
 | 组件 | 文件 | 说明 |
 |------|------|------|
-| **ws_server** | `ws_server.hpp/cpp` | WebSocket 服务端：Listener（accept 循环）、Session（连接管理+消息路由）、SessionManager（会话注册表）、AppStateNotifier（状态通知） |
+| **ws_server** | `ws_server.hpp/cpp` | WebSocket 服务端：Listener（accept 循环）、Session（连接管理+消息路由）、SessionManager（会话注册表）、PluginStateNotifier（状态通知） |
 | **netconn** | `netconn.hpp/cpp` | HTTP/WebSocket 客户端：HttpClient（GET/POST）、WsClient（WebSocket 连接） |
 | **pty_session** | `pty_session.hpp/cpp` | PTY 伪终端会话管理 |
 

@@ -1,0 +1,14 @@
+{
+  "name": "go", "display_name": "围棋", "type": "game", "library": "libgo.so",
+  "frontend": { "size": 19, "clickGame": true, "isGo": true,
+    "styles": { ".": { "background": "#c8a45a" }, "B": { "background": "#111", "borderRadius": "50%" }, "W": { "background": "#eee", "borderRadius": "50%" } }
+  },
+  "tools": [
+    { "name": "control_plugin", "description": "Place a stone or pass/resign. coord for placement, value: -1=pass, -2=resign", "handler": "game_tick",
+      "params": { "type": "object", "properties": { "coord": { "type": "array", "items": { "type": "integer" }, "description": "[row, col]" }, "value": { "type": "integer", "description": "-1 pass, -2 resign" } }, "required": [] }
+    },
+    { "name": "get_plugin_state", "description": "Get current go board state", "handler": "game_state",
+      "params": { "type": "object", "properties": {} }
+    }
+  ]
+}

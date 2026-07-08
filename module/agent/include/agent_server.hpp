@@ -13,11 +13,11 @@
 
 #include "agent_api.hpp"
 #include "message_queue.hpp"
-#include "app_manager.hpp"
+#include "plugin_manager.hpp"
 
 class LlmClient;
 
-typedef void (*app_output_fn)(void* userdata, const char* json);
+typedef void (*plugin_output_fn)(void* userdata, const char* json);
 
 namespace agent {
 
@@ -35,16 +35,16 @@ class AgentServer : public IAgent, public std::enable_shared_from_this<AgentServ
 public:
     AgentServer();
 
-    void setOutput(app_output_fn cb, void* udata);
+    void setOutput(plugin_output_fn cb, void* udata);
     void setIoContext(void* io_ctx);
     void onInput(const std::string& json);
     std::string process(const std::string& json);
     bool isDone() const;
     void destroy();
 
-    bool openApp(const std::string& name, const std::string& paramsJson) override;
-    bool controlApp(const std::string& name, const std::string& commandJson) override;
-    bool closeApp(const std::string& name) override;
+    bool openPlugin(const std::string& name, const std::string& paramsJson) override;
+    bool controlPlugin(const std::string& name, const std::string& commandJson) override;
+    bool closePlugin(const std::string& name) override;
     void stop() override;
 
     bool chatSend(const std::string& text) override;
@@ -74,7 +74,7 @@ private:
     std::atomic<bool> streaming_{false};
     int round_ = 0;
 
-    app_output_fn outputCb_ = nullptr;
+    plugin_output_fn outputCb_ = nullptr;
     void* outputUdata_ = nullptr;
     void* ioCtxPtr_ = nullptr;
 
@@ -85,8 +85,8 @@ private:
 
     uint64_t subHandle_ = 0;
     void ensureSubscribed();
-    void onAppStateChange(const std::string& appName, const boost::json::value& state);
-    void injectStateIntoHistory(const std::string& appName, const boost::json::value& state);
+    void onPluginStateChange(const std::string& pluginName, const boost::json::value& state);
+    void injectStateIntoHistory(const std::string& pluginName, const boost::json::value& state);
 };
 
 } // namespace agent

@@ -10,7 +10,7 @@ C++17 库，提供线程安全的线程池、定时器、日志、事件管理�
 - **Logger** —— RAII 线程安全日志，消息先缓冲到 `ostringstream` 再一次性写入（减少锁持有时间）。支持 `std::cerr`/文件/自定义流。时间戳秒级缓存。
 - **EventManager** —— 发布-订阅模式，基于 `boost::signals2`。O(1) 取消订阅，`subscriberCount` 返回 0 时自动清理空信号，支持 `cleanup()` 惰性压缩。异常隔离，锁内复制信号、锁外执行回调。
 - **NetConn** —— 异步 HTTP/WebSocket 客户端，基于 ThreadPool 的 io_context。支持 GET/POST/WS connect/send/close。WebSocket 支持自动重连（指数退避，最多 10 次）。状态机正确更新 CONNECTED/DISCONNECTED。
-- **ws_server** —— 异步 WebSocket 服务端基础设施。Session 管理单连接生命周期（HTTP Upgrade → 路由 → 消息循环），Listener 提供 async_accept 循环。支持异步/遗留双模 app，写队列串行化 async_write。
+- **ws_server** —— 异步 WebSocket 服务端基础设施。Session 管理单连接生命周期（HTTP Upgrade → 路由 → 消息循环），Listener 提供 async_accept 循环。支持异步/遗留双模 plugin，写队列串行化 async_write。
 - **toolbox** —— URL 解析（基于 `boost::url`，含 query string）和 JSON 工具函数（`jsonParseStr`/`jsonParseInt` 基于 `boost::json::parse` + `try_value_to`）。
 ## 目录结构
 

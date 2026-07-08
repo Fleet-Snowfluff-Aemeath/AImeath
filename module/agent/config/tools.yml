@@ -1,10 +1,10 @@
 tools:
-  - name: open_app
-    description: "打开一个应用程序窗口. 支持的应用: snake (贪吃蛇), gomoku (五子棋), pacman (吃豆人), go (围棋), chat (聊天), terminal (终端), filemanager (文件管理器). NOTE: 如果用户想浏览/查看/管理文件, 请使用 file_list/file_read/file_write 等工具, 不要打开 filemanager 应用. 只有用户明确要求打开文件管理器可视化界面时才使用 open_app filemanager. 同理, shell 命令用 terminal_exec, 不需要打开 terminal. IMPORTANT: open_app 是异步操作, 窗口需要时间启动。调用后应先用 list_active_windows 确认目标应用已存在, 再执行 control_app。"
+  - name: open_plugin
+    description: "打开一个应用程序窗口. 支持的应用: snake (贪吃蛇), gomoku (五子棋), pacman (吃豆人), go (围棋), chat (聊天), terminal (终端), filemanager (文件管理器). NOTE: 如果用户想浏览/查看/管理文件, 请使用 file_list/file_read/file_write 等工具, 不要打开 filemanager 应用. 只有用户明确要求打开文件管理器可视化界面时才使用 open_plugin filemanager. 同理, shell 命令用 terminal_exec, 不需要打开 terminal. IMPORTANT: open_plugin 是异步操作, 窗口需要时间启动。调用后应先用 list_active_windows 确认目标应用已存在, 再执行 control_plugin。"
     params:
       type: object
       properties:
-        app:
+        plugin:
           type: string
           description: "应用名称, 可选: snake, gomoku, pacman, go, chat, terminal, filemanager"
         width:
@@ -13,14 +13,14 @@ tools:
         height:
           type: integer
           description: "棋盘高度 (游戏类应用, default 20)"
-      required: [app]
+      required: [plugin]
 
-  - name: control_app
-    description: "向已打开的应用发送操作指令. NOTE: This tool ONLY works for game apps (snake, gomoku, pacman, go). For running shell commands, use terminal_exec instead. For browsing files, use file_list/file_read instead. Direction values: 0=up, 1=down, 2=left, 3=right. For go: -1=pass, -2=resign. For gomoku/snake/go/pacman 棋盘格子类游戏, 使用 coord 传入落子位置坐标 [row,col], 如第一行第一列为 [0,0]. 同名app有多个实例时, 用 instance 参数指定 (从0开始). 状态注入中 -N 后缀的数字即 instance 值. NOTE: 如果返回 success:false 且 msg 提示 no active session, 说明应用尚未启动完成, 应稍等后使用 list_active_windows 验证应用状态后重试。"
+  - name: control_plugin
+    description: "向已打开的应用发送操作指令. NOTE: This tool ONLY works for game plugins (snake, gomoku, pacman, go). For running shell commands, use terminal_exec instead. For browsing files, use file_list/file_read instead. Direction values: 0=up, 1=down, 2=left, 3=right. For go: -1=pass, -2=resign. For gomoku/snake/go/pacman 棋盘格子类游戏, 使用 coord 传入落子位置坐标 [row,col], 如第一行第一列为 [0,0]. 同名plugin有多个实例时, 用 instance 参数指定 (从0开始). 状态注入中 -N 后缀的数字即 instance 值. NOTE: 如果返回 success:false 且 msg 提示 no active session, 说明应用尚未启动完成, 应稍等后使用 list_active_windows 验证应用状态后重试。"
     params:
       type: object
       properties:
-        app:
+        plugin:
           type: string
           description: "目标应用名称"
         value:
@@ -34,33 +34,33 @@ tools:
         instance:
           type: integer
           description: "实例编号 (同名多实例时使用, 从0开始)"
-      required: [app]
+      required: [plugin]
 
-  - name: close_app
+  - name: close_plugin
     description: "关闭一个已打开的应用窗口. 可用 list_active_windows 获取 window_id 来指定关闭哪一个."
     params:
       type: object
       properties:
-        app:
+        plugin:
           type: string
           description: "要关闭的应用名称"
         window_id:
           type: string
           description: "可选, 指定要关闭的窗口 ID (从 list_active_windows 获取). 不指定则关闭该应用最新的窗口."
-      required: [app]
+      required: [plugin]
 
-  - name: get_app_state
-    description: "查询一个应用的当前状态. NOTE: This tool ONLY works for game apps (snake, gomoku, pacman, go). For chat it returns empty (chat messages cannot be read via this tool). For file browsing use file_list/file_read. For terminal use terminal_exec. 如果返回 success:false 则表示该应用未在运行. 先用 list_active_windows 确认哪些应用在运行再查询."
+  - name: get_plugin_state
+    description: "查询一个应用的当前状态. NOTE: This tool ONLY works for game plugins (snake, gomoku, pacman, go). For chat it returns empty (chat messages cannot be read via this tool). For file browsing use file_list/file_read. For terminal use terminal_exec. 如果返回 success:false 则表示该应用未在运行. 先用 list_active_windows 确认哪些应用在运行再查询."
     params:
       type: object
       properties:
-        app:
+        plugin:
           type: string
           description: "应用名称: snake, gomoku, pacman, go, terminal, filemanager"
         instance:
           type: integer
           description: "实例编号 (同名多实例时使用, 从0开始)"
-      required: [app]
+      required: [plugin]
 
   - name: list_active_windows
     description: "列出当前所有活跃的应用窗口及其 session 信息. 这是获取当前运行应用数量的唯一可靠方法. 返回包含 count 字段表示窗口总数."
@@ -135,7 +135,7 @@ tools:
       required: [path]
 
   - name: terminal_exec
-    description: "在终端中执行一条 shell 命令并获取输出. 当用户想执行 ls/pwd/echo/cat/date 等命令时, 请直接使用此工具, 不要先打开终端应用. 可以执行任何命令如 ls (列出文件), pwd (当前路径), echo (输出文字), cat (查看文件), whoami (当前用户), date (日期) 等. 这是执行 shell 命令的唯一方式. 不需要先 open_app terminal, 直接使用此工具即可."
+    description: "在终端中执行一条 shell 命令并获取输出. 当用户想执行 ls/pwd/echo/cat/date 等命令时, 请直接使用此工具, 不要先打开终端应用. 可以执行任何命令如 ls (列出文件), pwd (当前路径), echo (输出文字), cat (查看文件), whoami (当前用户), date (日期) 等. 这是执行 shell 命令的唯一方式. 不需要先 open_plugin terminal, 直接使用此工具即可."
     params:
       type: object
       properties:

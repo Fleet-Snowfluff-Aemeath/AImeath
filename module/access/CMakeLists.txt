@@ -19,7 +19,7 @@ file(GLOB SRC_SOURCES CONFIGURE_DEPENDS
 )
 add_library(access SHARED ${SRC_SOURCES})
 target_include_directories(access PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
-target_include_directories(access PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../core/include ${CMAKE_CURRENT_SOURCE_DIR}/../app/include)
+target_include_directories(access PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../core/include ${CMAKE_CURRENT_SOURCE_DIR}/../plugin/include)
 target_link_libraries(access PUBLIC Boost::json Boost::url OpenSSL::SSL OpenSSL::Crypto Threads::Threads core)
 
 target_compile_definitions(access PRIVATE PROJ_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/../..")

@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.12)
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     project(agent LANGUAGES CXX)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../core ${CMAKE_BINARY_DIR}/core)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../app ${CMAKE_BINARY_DIR}/app)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../plugin ${CMAKE_BINARY_DIR}/plugin)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../llm ${CMAKE_BINARY_DIR}/llm)
 endif()
 
@@ -37,10 +37,10 @@ endif()
 target_include_directories(agent PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../core/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/../app/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../plugin/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../llm/include
 )
-target_link_libraries(agent PUBLIC Boost::json core app llm access yaml-cpp::yaml-cpp)
+target_link_libraries(agent PUBLIC Boost::json core plugin llm access yaml-cpp::yaml-cpp)
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 find_package(GTest REQUIRED)

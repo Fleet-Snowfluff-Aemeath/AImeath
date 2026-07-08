@@ -35,15 +35,15 @@ foreach(module_dir ${MODULE_DIRS})
     add_subdirectory(${module_dir})
 endforeach()
 
-file(GLOB APP_DIRS CONFIGURE_DEPENDS desktop/app/*/backend)
-foreach(app_dir ${APP_DIRS})
-    add_subdirectory(${app_dir})
+file(GLOB APP_DIRS CONFIGURE_DEPENDS desktop/plugin/*/backend)
+foreach(plugin_dir ${APP_DIRS})
+    add_subdirectory(${plugin_dir})
 endforeach()
 
 find_package(Threads REQUIRED)
 
 add_executable(AImeath main.cpp)
-target_link_libraries(AImeath app core access Threads::Threads dl)
+target_link_libraries(AImeath plugin core access Threads::Threads dl)
 
 set_target_properties(AImeath PROPERTIES
     BUILD_RPATH "${CMAKE_BINARY_DIR}/output/lib"
@@ -51,5 +51,5 @@ set_target_properties(AImeath PROPERTIES
 )
 
 target_include_directories(AImeath PRIVATE
-    ${CMAKE_SOURCE_DIR}/module/app/include
+    ${CMAKE_SOURCE_DIR}/module/plugin/include
 )

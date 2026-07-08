@@ -41,4 +41,4 @@ src/
 后端端口发现（通过 `/api/config` 接口），含重试逻辑。
 
 ### config/games.js
-通过 Vite `import.meta.glob` 自动发现 `app/*/frontend/config.js`，构建 APPS/INFO/STYLES/META 导出表。定义方向键映射、Go 操作常量等。
+通过 Vite `import.meta.glob` 自动发现 `plugin/*/frontend/config.js`，构建 APPS/INFO/STYLES/META 导出表。定义方向键映射、Go 操作常量等。

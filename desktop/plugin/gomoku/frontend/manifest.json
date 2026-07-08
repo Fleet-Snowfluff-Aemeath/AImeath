@@ -1,0 +1,14 @@
+{
+  "name": "gomoku", "display_name": "五子棋", "type": "game", "library": "libgomoku.so",
+  "frontend": { "size": 15, "clickGame": true,
+    "styles": { ".": { "background": "#c8a45a" }, "B": { "background": "#111", "borderRadius": "50%" }, "W": { "background": "#eee", "borderRadius": "50%" } }
+  },
+  "tools": [
+    { "name": "control_plugin", "description": "Place a stone. coord: [row, col] starting from 0", "handler": "game_tick",
+      "params": { "type": "object", "properties": { "coord": { "type": "array", "items": { "type": "integer" }, "description": "Board position [row, col]" } }, "required": ["coord"] }
+    },
+    { "name": "get_plugin_state", "description": "Get current gomoku board state", "handler": "game_state",
+      "params": { "type": "object", "properties": {} }
+    }
+  ]
+}

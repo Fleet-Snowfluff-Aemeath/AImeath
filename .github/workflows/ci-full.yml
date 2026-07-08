@@ -78,8 +78,8 @@ jobs:
       - name: module/core
         run: cd module/core && bash test_build.sh
 
-      - name: module/app
-        run: cd module/app && bash test_build.sh
+      - name: module/plugin
+        run: cd module/plugin && bash test_build.sh
 
       - name: module/llm
         run: cd module/llm && bash test_build.sh
@@ -88,28 +88,28 @@ jobs:
         run: cd module/agent && bash test_build.sh
 
       - name: shared/game
-        run: cd desktop/app/shared/game && bash test_build.sh
+        run: cd desktop/plugin/shared/game && bash test_build.sh
 
       - name: snake/backend
-        run: cd desktop/app/snake/backend && bash test_build.sh
+        run: cd desktop/plugin/snake/backend && bash test_build.sh
 
       - name: gomoku/backend
-        run: cd desktop/app/gomoku/backend && bash test_build.sh
+        run: cd desktop/plugin/gomoku/backend && bash test_build.sh
 
       - name: pacman/backend
-        run: cd desktop/app/pacman/backend && bash test_build.sh
+        run: cd desktop/plugin/pacman/backend && bash test_build.sh
 
       - name: go/backend
-        run: cd desktop/app/go/backend && bash test_build.sh
+        run: cd desktop/plugin/go/backend && bash test_build.sh
 
       - name: chat/backend
-        run: cd desktop/app/chat/backend && bash test_build.sh
+        run: cd desktop/plugin/chat/backend && bash test_build.sh
 
       - name: filemanager/backend
-        run: cd desktop/app/filemanager/backend && bash test_build.sh
+        run: cd desktop/plugin/filemanager/backend && bash test_build.sh
 
       - name: terminal/backend
-        run: cd desktop/app/terminal/backend && bash test_build.sh || true
+        run: cd desktop/plugin/terminal/backend && bash test_build.sh || true
 
       - name: C++ cmake build (full)
         run: |

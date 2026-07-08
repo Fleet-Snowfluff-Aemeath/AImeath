@@ -8,9 +8,9 @@
 frontend/
 ├── index.html              HTML 入口
 ├── package.json            依赖配置
-├── vite.config.js          Vite 构建配置（@apps → app/）
+├── vite.config.js          Vite 构建配置（@plugins → plugin/）
 ├── dist/                   构建产物
-├── app/                    ← 各应用代码（完全自治）
+├── plugin/                    ← 各应用代码（完全自治）
 │   └── <name>/
 │       ├── backend/        C++ 游戏模块（共享库 .so）
 │       └── frontend/
@@ -20,7 +20,7 @@ frontend/
     ├── main.js             Vue 入口（从 APPS 自动生成路由）
     ├── App.vue             根组件
     ├── config/
-    │   └── games.js        自动发现 app/*/frontend/，注册路由
+    │   └── games.js        自动发现 plugin/*/frontend/，注册路由
     ├── views/
     │   └── HomePage.vue    桌面启动器（从 APPS 动态读取应用列表）
     ├── services/
@@ -35,9 +35,9 @@ frontend/
 | 路径 | 组件 | 说明 |
 |------|------|------|
 | `/` | `HomePage` | 桌面启动器，显示所有应用图标 |
-| `/<name>` | `app/<name>/frontend/index.vue` | 自动挂载，根据 config.js 加载 |
+| `/<name>` | `plugin/<name>/frontend/index.vue` | 自动挂载，根据 config.js 加载 |
 
-路由自动由 `games.js` 扫描 `app/*/frontend/` 生成，添加新应用无需修改共享代码。
+路由自动由 `games.js` 扫描 `plugin/*/frontend/` 生成，添加新应用无需修改共享代码。
 
 ## 前提条件
 
@@ -105,10 +105,10 @@ npm run preview    # 预览构建结果
 
 ## 添加新应用
 
-只需在 `app/` 下创建目录：
+只需在 `plugin/` 下创建目录：
 
-1. `frontend/app/<name>/frontend/config.js` — 应用配置
-2. `frontend/app/<name>/frontend/index.vue` — 应用页面
-3. `frontend/app/<name>/backend/CMakeLists.txt` — C++ 后端（可选）
+1. `frontend/plugin/<name>/frontend/config.js` — 应用配置
+2. `frontend/plugin/<name>/frontend/index.vue` — 应用页面
+3. `frontend/plugin/<name>/backend/CMakeLists.txt` — C++ 后端（可选）
 
 无需修改 `src/` 下任何共享代码。

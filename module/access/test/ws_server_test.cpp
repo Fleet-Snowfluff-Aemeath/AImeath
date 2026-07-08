@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 #include "ws_server.hpp"
-#include "app_mod.hpp"
+#include "plugin_mod.hpp"
 #include <boost/asio.hpp>
 
 TEST(WsServerConstantsTest, DefaultPort)
@@ -18,9 +18,9 @@ TEST(WsServerConstantsTest, DefaultFallbackThreads)
     EXPECT_EQ(DEFAULT_FALLBACK_THREADS, 4);
 }
 
-TEST(WsServerKeyNamespaceTest, AppKey)
+TEST(WsServerKeyNamespaceTest, PluginKey)
 {
-    EXPECT_STREQ(key::APP, "app");
+    EXPECT_STREQ(key::APP, "plugin");
 }
 
 TEST(WsServerKeyNamespaceTest, GameKey)
@@ -28,16 +28,16 @@ TEST(WsServerKeyNamespaceTest, GameKey)
     EXPECT_STREQ(key::GAME, "game");
 }
 
-TEST(WsServerAppnameNamespaceTest, ChatApp)
+TEST(WsServerPluginnameNamespaceTest, ChatPlugin)
 {
-    EXPECT_STREQ(appname::CHAT, "chat");
+    EXPECT_STREQ(pluginname::CHAT, "chat");
 }
 
 TEST(WsServerListenerTest, ConstructAndShutdown)
 {
     asio::io_context io;
     Logger logger(Logger::WARN);
-    AppModuleCache cache;
+    PluginModuleCache cache;
 
     auto listener = std::make_shared<Listener>(io, logger, cache, nullptr, 0);
     EXPECT_NO_THROW(listener->shutdown());
@@ -47,7 +47,7 @@ TEST(WsServerListenerTest, CustomPort)
 {
     asio::io_context io;
     Logger logger(Logger::WARN);
-    AppModuleCache cache;
+    PluginModuleCache cache;
 
     auto listener = std::make_shared<Listener>(io, logger, cache, nullptr, 8080);
     EXPECT_NO_THROW(listener->shutdown());
@@ -57,7 +57,7 @@ TEST(WsServerSessionTest, ConstructSession)
 {
     asio::io_context io;
     Logger logger(Logger::WARN);
-    AppModuleCache cache;
+    PluginModuleCache cache;
     ThreadPool fallback(1);
 
     tcp::acceptor acceptor(io, tcp::endpoint(tcp::v4(), 0));
@@ -82,7 +82,7 @@ TEST(WsServerSessionTest, ConstructSessionWithNoFallbackPool)
 {
     asio::io_context io;
     Logger logger(Logger::WARN);
-    AppModuleCache cache;
+    PluginModuleCache cache;
 
     tcp::acceptor acceptor(io, tcp::endpoint(tcp::v4(), 0));
     tcp::socket socket1(io);
@@ -105,7 +105,7 @@ TEST(WsServerListenerTest, ConnectionCountStartsAtZero)
 {
     asio::io_context io;
     Logger logger(Logger::WARN);
-    AppModuleCache cache;
+    PluginModuleCache cache;
 
     auto listener = std::make_shared<Listener>(io, logger, cache, nullptr, 0);
     EXPECT_EQ(listener->connection_count(), 0);
@@ -116,7 +116,7 @@ TEST(WsServerListenerTest, MaxConnectionsDefaultsToZero)
 {
     asio::io_context io;
     Logger logger(Logger::WARN);
-    AppModuleCache cache;
+    PluginModuleCache cache;
 
     auto listener = std::make_shared<Listener>(io, logger, cache, nullptr, 0);
     EXPECT_EQ(listener->max_connections(), 0);
@@ -127,7 +127,7 @@ TEST(WsServerListenerTest, SetMaxConnections)
 {
     asio::io_context io;
     Logger logger(Logger::WARN);
-    AppModuleCache cache;
+    PluginModuleCache cache;
 
     auto listener = std::make_shared<Listener>(io, logger, cache, nullptr, 0);
     listener->set_max_connections(100);

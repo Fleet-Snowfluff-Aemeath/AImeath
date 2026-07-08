@@ -4,7 +4,7 @@
  * ws_server — 异步 WebSocket 服务端基础设施
  *
  * 提供 Session（连接管理 + 路由 + 消息循环）和 Listener（async_accept）。
- * 依赖 core/app_mod（模块接口）、threadmgr（线程池）、logger、toolbox。
+ * 依赖 core/plugin_mod（模块接口）、threadmgr（线程池）、logger、toolbox。
  */
 
 #include <string>
@@ -41,11 +41,11 @@ constexpr int DEFAULT_IO_THREADS = 4;
 constexpr int DEFAULT_FALLBACK_THREADS = 4;
 
 namespace key {
-    constexpr auto APP  = "app";
+    constexpr auto APP  = "plugin";
     constexpr auto GAME = "game";
 }
 
-namespace appname {
+namespace pluginname {
     constexpr auto CHAT  = "chat";
 }
 
@@ -56,19 +56,19 @@ class SessionManager : private boost::noncopyable
 public:
     static SessionManager& instance();
 
-    void registerSession(const std::string& appName, std::weak_ptr<Session> session);
-    std::shared_ptr<Session> findSession(const std::string& appName, int index = 0);
-    std::vector<std::shared_ptr<Session>> findAllSessions(const std::string& appName);
-    void unregisterSession(const std::string& appName, Session* ptr);
+    void registerSession(const std::string& pluginName, std::weak_ptr<Session> session);
+    std::shared_ptr<Session> findSession(const std::string& pluginName, int index = 0);
+    std::vector<std::shared_ptr<Session>> findAllSessions(const std::string& pluginName);
+    void unregisterSession(const std::string& pluginName, Session* ptr);
     std::vector<std::pair<std::string, int>> listSessions();
 
-    void registerWindow(const std::string& windowId, const std::string& sessionId, const std::string& appName);
+    void registerWindow(const std::string& windowId, const std::string& sessionId, const std::string& pluginName);
     void unregisterWindow(const std::string& windowId);
     boost::json::array listActiveWindows();
 
-    void stashApp(const std::string& windowId, AppInstance app, std::string appName);
-    bool restoreApp(const std::string& windowId, AppInstance& outApp, std::string& outAppName);
-    void removeStashedApp(const std::string& windowId);
+    void stashPlugin(const std::string& windowId, PluginInstance plugin, std::string pluginName);
+    bool restorePlugin(const std::string& windowId, PluginInstance& outPlugin, std::string& outPluginName);
+    void removeStashedPlugin(const std::string& windowId);
     void setStashTtlSec(int ttl) { stashTtlSec_ = ttl; }
 
 private:
@@ -78,26 +78,26 @@ private:
     std::map<std::string, std::vector<std::weak_ptr<Session>>> sessions_;
     struct WinInfo {
         std::string sessionId;
-        std::string appName;
+        std::string pluginName;
     };
     std::map<std::string, WinInfo> windowMap_;
 
-    struct StashedApp {
-        AppInstance app;
-        std::string appName;
+    struct StashedPlugin {
+        PluginInstance plugin;
+        std::string pluginName;
         std::chrono::steady_clock::time_point at;
     };
-    std::map<std::string, StashedApp> stashedApps_;
+    std::map<std::string, StashedPlugin> stashedPlugins_;
     int stashTtlSec_{0};
 };
 
-struct AppStateEvent
+struct PluginStateEvent
 {
-    std::string appName;
+    std::string pluginName;
     boost::json::value state;
 };
 
-EventBus& appEventBus();
+EventBus& pluginEventBus();
 
 class Session : public std::enable_shared_from_this<Session>
 {
@@ -108,9 +108,9 @@ public:
     ~Session();
 
     void start();
-    void on_app_output(const char* json);
-    std::string call_app_process(const std::string& input);
-    std::string call_app_process_and_notify(const std::string& input);
+    void on_plugin_output(const char* json);
+    std::string call_plugin_process(const std::string& input);
+    std::string call_plugin_process_and_notify(const std::string& input);
 
     void set_connection_counter(std::shared_ptr<std::atomic<size_t>> counter) { connection_count_ = std::move(counter); }
 
@@ -128,7 +128,7 @@ private:
     void do_ws_accept();
     void do_read_first_msg();
     void route_and_setup();
-    static void app_output_cb(void* userdata, const char* json);
+    static void plugin_output_cb(void* userdata, const char* json);
     void do_read();
     void on_read(beast::error_code ec, std::size_t n);
     void process_legacy(const std::string& msg);
@@ -144,13 +144,13 @@ private:
 
     Logger&         logger_;
     IPluginCache& cache_;
-    AppInstance     app_;
+    PluginInstance     plugin_;
     ThreadPool*     fallback_pool_;
     asio::io_context* io_ctx_;
     asio::strand<asio::io_context::executor_type> strand_;
     int             port_;
     std::string     first_msg_;
-    std::string     app_name_;
+    std::string     plugin_name_;
     std::string     session_id_;
     std::string     window_id_;
     std::string     display_name_;

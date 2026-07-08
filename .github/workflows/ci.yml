@@ -70,8 +70,8 @@ jobs:
       - name: Build and test module/core
         run: cd module/core && bash test_build.sh
 
-      - name: Build and test module/app
-        run: cd module/app && bash test_build.sh
+      - name: Build and test module/plugin
+        run: cd module/plugin && bash test_build.sh
 
       - name: Build and test module/llm
         run: cd module/llm && bash test_build.sh
@@ -80,28 +80,28 @@ jobs:
         run: cd module/agent && bash test_build.sh
 
       - name: Build and test shared/game
-        run: cd desktop/app/shared/game && bash test_build.sh
+        run: cd desktop/plugin/shared/game && bash test_build.sh
 
       - name: Build and test snake/backend
-        run: cd desktop/app/snake/backend && bash test_build.sh
+        run: cd desktop/plugin/snake/backend && bash test_build.sh
 
       - name: Build and test gomoku/backend
-        run: cd desktop/app/gomoku/backend && bash test_build.sh
+        run: cd desktop/plugin/gomoku/backend && bash test_build.sh
 
       - name: Build and test pacman/backend
-        run: cd desktop/app/pacman/backend && bash test_build.sh
+        run: cd desktop/plugin/pacman/backend && bash test_build.sh
 
       - name: Build and test go/backend
-        run: cd desktop/app/go/backend && bash test_build.sh
+        run: cd desktop/plugin/go/backend && bash test_build.sh
 
       - name: Build and test chat/backend
-        run: cd desktop/app/chat/backend && bash test_build.sh
+        run: cd desktop/plugin/chat/backend && bash test_build.sh
 
       - name: Build and test filemanager/backend
-        run: cd desktop/app/filemanager/backend && bash test_build.sh
+        run: cd desktop/plugin/filemanager/backend && bash test_build.sh
 
       - name: Build and test terminal/backend
-        run: cd desktop/app/terminal/backend && bash test_build.sh
+        run: cd desktop/plugin/terminal/backend && bash test_build.sh
 
       - name: Full project build
         run: |

@@ -72,47 +72,47 @@ BENCHMARK(BM_AgentSetOutput);
 
 // ====== IAgent interface ======
 
-static void BM_AgentOpenApp(benchmark::State& state) {
+static void BM_AgentOpenPlugin(benchmark::State& state) {
     auto ptr = std::make_shared<agent::AgentServer>();
     std::string dummy;
     ptr->setOutput([](void* udata, const char*) {}, &dummy);
     for (auto _ : state) {
-        ptr->openApp("snake", "{}");
+        ptr->openPlugin("snake", "{}");
     }
     ptr->destroy();
 }
-BENCHMARK(BM_AgentOpenApp);
+BENCHMARK(BM_AgentOpenPlugin);
 
-static void BM_AgentOpenAppNoOutput(benchmark::State& state) {
+static void BM_AgentOpenPluginNoOutput(benchmark::State& state) {
     auto ptr = std::make_shared<agent::AgentServer>();
     for (auto _ : state) {
-        ptr->openApp("snake", "{}");
+        ptr->openPlugin("snake", "{}");
     }
     ptr->destroy();
 }
-BENCHMARK(BM_AgentOpenAppNoOutput);
+BENCHMARK(BM_AgentOpenPluginNoOutput);
 
-static void BM_AgentControlApp(benchmark::State& state) {
-    auto ptr = std::make_shared<agent::AgentServer>();
-    std::string dummy;
-    ptr->setOutput([](void* udata, const char*) {}, &dummy);
-    for (auto _ : state) {
-        ptr->controlApp("snake", "{\"value\":3}");
-    }
-    ptr->destroy();
-}
-BENCHMARK(BM_AgentControlApp);
-
-static void BM_AgentCloseApp(benchmark::State& state) {
+static void BM_AgentControlPlugin(benchmark::State& state) {
     auto ptr = std::make_shared<agent::AgentServer>();
     std::string dummy;
     ptr->setOutput([](void* udata, const char*) {}, &dummy);
     for (auto _ : state) {
-        ptr->closeApp("snake");
+        ptr->controlPlugin("snake", "{\"value\":3}");
     }
     ptr->destroy();
 }
-BENCHMARK(BM_AgentCloseApp);
+BENCHMARK(BM_AgentControlPlugin);
+
+static void BM_AgentClosePlugin(benchmark::State& state) {
+    auto ptr = std::make_shared<agent::AgentServer>();
+    std::string dummy;
+    ptr->setOutput([](void* udata, const char*) {}, &dummy);
+    for (auto _ : state) {
+        ptr->closePlugin("snake");
+    }
+    ptr->destroy();
+}
+BENCHMARK(BM_AgentClosePlugin);
 
 // ====== onInput ======
 

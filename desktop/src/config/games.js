@@ -1,11 +1,11 @@
-const configModules = import.meta.glob('@apps/*/frontend/config.js', { eager: true })
-const pageModules = import.meta.glob('@apps/*/frontend/index.vue', { eager: true })
+const configModules = import.meta.glob('@plugins/*/frontend/config.js', { eager: true })
+const pageModules = import.meta.glob('@plugins/*/frontend/index.vue', { eager: true })
 
 export const APPS = {}
 
 for (const path in configModules) {
   const segs = path.replace(/\\/g, '/').split('/')
-  const idx = segs.indexOf('app')
+  const idx = segs.indexOf('plugin')
   const name = idx >= 0 && idx + 1 < segs.length ? segs[idx + 1] : null
   if (!name) continue
   const config = configModules[path]

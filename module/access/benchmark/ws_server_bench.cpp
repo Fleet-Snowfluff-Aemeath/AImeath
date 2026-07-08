@@ -1,13 +1,13 @@
 #include <benchmark/benchmark.h>
 #include "ws_server.hpp"
-#include <app_mod.hpp>
+#include <plugin_mod.hpp>
 #include <boost/asio.hpp>
 
 static void BM_WsServerListenerCreate(benchmark::State& state)
 {
     asio::io_context io;
     Logger logger(Logger::ERROR);
-    AppModuleCache cache;
+    PluginModuleCache cache;
 
     for (auto _ : state)
     {
@@ -22,7 +22,7 @@ static void BM_WsServerSessionCreate(benchmark::State& state)
 {
     asio::io_context io;
     Logger logger(Logger::ERROR);
-    AppModuleCache cache;
+    PluginModuleCache cache;
     ThreadPool fallback(1);
 
     for (auto _ : state)
