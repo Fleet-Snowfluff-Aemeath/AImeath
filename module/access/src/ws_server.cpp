@@ -2,9 +2,10 @@
 #include "config.hpp"
 #include <chrono>
 #include <algorithm>
+#include <future>
 
 Session::Session(tcp::socket socket, Logger& logger,
-                 IModuleCache& cache, ThreadPool* fallback_pool,
+                 IPluginCache& cache, ThreadPool* fallback_pool,
                  asio::io_context* io_ctx, int port)
     : logger_(logger)
     , cache_(cache)
@@ -28,8 +29,8 @@ Session::~Session()
     if (connection_count_)
         connection_count_->fetch_sub(1, std::memory_order_release);
     if (closing_) return;
-    if (!app_name_.empty()) {
-        SessionManager::instance().unregisterSession(app_name_, this);
+    if (!plugin_name_.empty()) {
+        SessionManager::instance().unregisterSession(plugin_name_, this);
         if (!window_id_.empty())
             SessionManager::instance().unregisterWindow(window_id_);
     }
@@ -45,7 +46,7 @@ void Session::start()
     do_http_read();
 }
 
-void Session::on_app_output(const char* json)
+void Session::on_plugin_output(const char* json)
 {
     if (closing_) return;
     reset_heartbeat();
@@ -190,7 +191,7 @@ void Session::do_read_first_msg()
 
 void Session::route_and_setup()
 {
-    std::string app_name;
+    std::string plugin_name;
     std::string action;
     try {
         auto val = boost::json::parse(first_msg_);
@@ -210,13 +211,13 @@ void Session::route_and_setup()
 
             std::string s = jsonParseStr(val, key::APP);
             if (!s.empty()) {
-                app_name = std::move(s);
+                plugin_name = std::move(s);
             } else {
                 s = jsonParseStr(val, key::GAME);
                 if (!s.empty())
-                    app_name = std::move(s);
+                    plugin_name = std::move(s);
                 else
-                    app_name = appname::CHAT;
+                    plugin_name = pluginname::CHAT;
             }
         }
     } catch (...) {}
@@ -227,35 +228,30 @@ void Session::route_and_setup()
             close_ws();
             return;
         }
-        AppPtr restoredApp;
-        AppModule restoredMod;
+        PluginInstance restoredPlugin;
         std::string restoredName;
         auto& reg = SessionManager::instance();
-        if (reg.restoreApp(window_id_, restoredApp, restoredMod, restoredName)) {
-            logger_.info() << "Restored app " << restoredName << " from " << window_id_;
-            app_ = std::move(restoredApp);
-            mod_ = std::move(restoredMod);
-            app_name_ = restoredName;
+        if (reg.restorePlugin(window_id_, restoredPlugin, restoredName)) {
+            logger_.info() << "Restored plugin " << restoredName << " from " << window_id_;
+            plugin_ = std::move(restoredPlugin);
+            plugin_name_ = restoredName;
 
-            reg.registerSession(app_name_, shared_from_this());
-            reg.registerWindow(window_id_, session_id_, app_name_);
+            reg.registerSession(plugin_name_, shared_from_this());
+            reg.registerWindow(window_id_, session_id_, plugin_name_);
 
-            if (app_is_done()) {
-                logger_.info() << "Restored app is already done, closing";
-                reg.removeStashedApp(window_id_);
-                enqueue(jsonError("restored app has ended"));
+            if (plugin_.isDone()) {
+                logger_.info() << "Restored plugin is already done, closing";
+                reg.removeStashedPlugin(window_id_);
+                enqueue(jsonError("restored plugin has ended"));
                 close_ws();
                 return;
             }
 
-            if (mod_.is_async()) {
-                mod_.app_set_output(app_.get(), &Session::app_output_cb, this);
-                if (mod_.app_set_io_context)
-                    mod_.app_set_io_context(app_.get(), io_ctx_);
-                do_read();
-            } else {
-                do_read();
+            if (plugin_.isAsync()) {
+                plugin_.setOutput(&Session::plugin_output_cb, this);
+                plugin_.setIoContext(io_ctx_);
             }
+            do_read();
             return;
         }
         enqueue(jsonError("cannot resume: session expired for " + window_id_));
@@ -263,46 +259,45 @@ void Session::route_and_setup()
         return;
     }
 
-    logger_.info() << "Routing to app: " << app_name
+    logger_.info() << "Routing to plugin: " << plugin_name
                    << (window_id_.empty() ? "" : " wid:" + window_id_);
-    app_name_ = app_name;
+    plugin_name_ = plugin_name;
 
-    mod_ = cache_.load(app_name);
-    if (!mod_) {
-        enqueue(jsonError("failed to load " + app_name));
+    auto mod = cache_.load(plugin_name);
+    if (!mod) {
+        enqueue(jsonError("failed to load " + plugin_name));
         close_ws();
         return;
     }
 
-    app_ = mod_.create(first_msg_);
-    if (!app_) {
-        enqueue(jsonError("failed to create " + app_name + " instance"));
+    plugin_ = mod.createInstance(first_msg_);
+    if (!plugin_) {
+        enqueue(jsonError("failed to create " + plugin_name + " instance"));
         close_ws();
         return;
     }
 
-    if (app_name != appname::CHAT) {
-        SessionManager::instance().registerSession(app_name, shared_from_this());
+    if (plugin_name != pluginname::CHAT) {
+        SessionManager::instance().registerSession(plugin_name, shared_from_this());
         if (!window_id_.empty())
-            SessionManager::instance().registerWindow(window_id_, session_id_, app_name);
+            SessionManager::instance().registerWindow(window_id_, session_id_, plugin_name);
     } else {
-        SessionManager::instance().registerSession(app_name, shared_from_this());
+        SessionManager::instance().registerSession(plugin_name, shared_from_this());
     }
 
-    if (mod_.is_async()) {
-        mod_.app_set_output(app_.get(), &Session::app_output_cb, this);
-        if (mod_.app_set_io_context)
-            mod_.app_set_io_context(app_.get(), io_ctx_);
-        mod_.app_on_input(app_.get(), first_msg_.c_str());
+    if (plugin_.isAsync()) {
+        plugin_.setOutput(&Session::plugin_output_cb, this);
+        plugin_.setIoContext(io_ctx_);
+        plugin_.onInput(first_msg_);
         do_read();
     } else {
         process_legacy(first_msg_);
     }
 }
 
-void Session::app_output_cb(void* userdata, const char* json)
+void Session::plugin_output_cb(void* userdata, const char* json)
 {
-    static_cast<Session*>(userdata)->on_app_output(json);
+    static_cast<Session*>(userdata)->on_plugin_output(json);
 }
 
 void Session::do_read()
@@ -343,21 +338,34 @@ void Session::on_read(beast::error_code /*ec*/, std::size_t /*n*/)
 
     reset_heartbeat();
 
+    try {
+        auto val = boost::json::parse(msg);
+        if (val.is_object()) {
+            auto& obj = val.as_object();
+            auto typeIt = obj.find("type");
+            if (typeIt != obj.end() && typeIt->value().is_string()
+                && typeIt->value().as_string() == "pong") {
+                do_read();
+                return;
+            }
+        }
+    } catch (...) {}
+
     if (isCloseWindowMsg(msg)) {
         logger_.info() << "[sess:" << this << "] received close_window";
         user_close_ = true;
         if (!window_id_.empty())
-            SessionManager::instance().removeStashedApp(window_id_);
+            SessionManager::instance().removeStashedPlugin(window_id_);
         close_ws();
         return;
     }
 
-    if (mod_.is_async()) {
-        mod_.app_on_input(app_.get(), msg.c_str());
-        if (app_is_done()) {
-            logger_.info() << "[sess:" << this << "] app done, closing";
+    if (plugin_.isAsync()) {
+        plugin_.onInput(msg);
+        if (plugin_.isDone()) {
+            logger_.info() << "[sess:" << this << "] plugin done, closing";
             boost::json::object done;
-            done["type"] = "app_exited";
+            done["type"] = "plugin_exited";
             if (!window_id_.empty()) done["window_id"] = window_id_;
             enqueue(boost::json::serialize(done));
             close_after_write_ = true;
@@ -375,99 +383,85 @@ void Session::process_legacy(const std::string& msg)
         logger_.info() << "[sess:" << this << "] legacy close_window";
         user_close_ = true;
         if (!window_id_.empty())
-            SessionManager::instance().removeStashedApp(window_id_);
+            SessionManager::instance().removeStashedPlugin(window_id_);
         close_ws();
         return;
     }
 
-    auto app  = app_.get();
-    auto mod  = &mod_;
-    auto self = shared_from_this();
+    if (!plugin_) {
+        do_read();
+        return;
+    }
 
-    bool accepted = fallback_pool_->try_submit([self, msg, app, mod]() {
-        char* out = mod->app_process(app, msg.c_str());
-        if (out) {
-            std::string results(out);
-            mod->app_free_string(out);
-            asio::post(self->strand_,
-                [self, results = std::move(results)]() {
-                    try {
-                        auto arr = boost::json::parse(results).as_array();
-                        for (auto& item : arr) {
-                            self->enqueue(boost::json::serialize(item));
-                            if (item.is_object() && self->app_name_ != appname::CHAT) {
-                                auto& obj = item.as_object();
-                                auto it = obj.find("data");
-                                if (it != obj.end() && it->value().is_object()) {
-                                    auto& data = it->value().as_object();
-                                    auto overIt = data.find("over");
-                                    if (overIt != data.end() && overIt->value().is_bool() && overIt->value().as_bool()) {
-                                        AppStateNotifier::instance().notify(self->app_name_, boost::json::serialize(data));
-                                    }
-                                }
-                            }
-                        }
-                    } catch (...) {}
-                });
-        }
-
-        asio::post(self->strand_, [self]() {
-            if (self->app_is_done()) {
-                if (!self->app_name_.empty() && self->app_name_ != appname::CHAT) {
-                    boost::json::object doneState;
-                    doneState["over"] = true;
-                    doneState["reason"] = "session_closed";
-                    AppStateNotifier::instance().notify(self->app_name_, boost::json::serialize(doneState));
+    auto results = plugin_.processParsed(msg);
+    for (auto& item : results) {
+        enqueue(boost::json::serialize(item));
+        if (item.is_object() && plugin_name_ != pluginname::CHAT) {
+            auto& obj = item.as_object();
+            auto it = obj.find("data");
+            if (it != obj.end() && it->value().is_object()) {
+                auto& data = it->value().as_object();
+                auto overIt = data.find("over");
+                if (overIt != data.end() && overIt->value().is_bool() && overIt->value().as_bool()) {
+                    pluginEventBus().fire(PluginStateEvent{plugin_name_, boost::json::value(data)});
                 }
-                self->close_ws();
-            } else {
-                self->do_read();
             }
-        });
-    });
+        }
+    }
 
-    if (!accepted) {
-        enqueue(jsonError("server overloaded, please retry"));
+    if (plugin_.isDone()) {
+        if (!plugin_name_.empty() && plugin_name_ != pluginname::CHAT) {
+            boost::json::object doneState;
+            doneState["over"] = true;
+            doneState["reason"] = "session_closed";
+            pluginEventBus().fire(PluginStateEvent{plugin_name_, boost::json::value(doneState)});
+        }
+        close_ws();
+    } else {
         do_read();
     }
 }
 
-bool Session::app_is_done() const
+std::string Session::call_plugin_process(const std::string& input)
 {
-    return mod_.app_is_done
-        && mod_.app_is_done(app_.get()) != 0;
+    if (closing_) return "[]";
+    std::promise<std::string> p;
+    auto f = p.get_future();
+    auto self = shared_from_this();
+    asio::post(strand_, [self, input = std::string(input), p = std::move(p)]() mutable {
+        if (self->closing_ || !self->plugin_) {
+            p.set_value("[]");
+            return;
+        }
+        std::string result = self->plugin_.process(input);
+        self->reset_heartbeat();
+        p.set_value(std::move(result));
+    });
+    return f.get();
 }
 
-std::string Session::call_app_process(const std::string& input)
+std::string Session::call_plugin_process_and_notify(const std::string& input)
 {
-    if (!mod_ || !app_) return "[]";
-    char* out = mod_.app_process(app_.get(), input.c_str());
-    std::string result(out ? out : "[]");
-    if (mod_.app_free_string)
-        mod_.app_free_string(out);
-    return result;
-}
+    if (closing_) return "[]";
+    std::promise<std::string> p;
+    auto f = p.get_future();
+    auto self = shared_from_this();
+    asio::post(strand_, [self, input = std::string(input), p = std::move(p)]() mutable {
+        if (self->closing_ || !self->plugin_) {
+            p.set_value("[]");
+            return;
+        }
+        std::string result = self->plugin_.process(input);
 
-std::string Session::call_app_process_and_notify(const std::string& input)
-{
-    if (!mod_ || !app_) return "[]";
-    char* out = mod_.app_process(app_.get(), input.c_str());
-    std::string result(out ? out : "[]");
-    if (mod_.app_free_string)
-        mod_.app_free_string(out);
-
-    // 推送到游戏 WebSocket 客户端，使其显示更新
-    std::string copy = result;
-    asio::post(strand_, [self = shared_from_this(), copy = std::move(copy)]() {
-        if (self->closing_) return;
+        self->reset_heartbeat();
         try {
-            auto arr = boost::json::parse(copy).as_array();
+            auto arr = boost::json::parse(result).as_array();
             for (auto& item : arr)
                 self->enqueue(boost::json::serialize(item));
         } catch (...) {}
+        p.set_value(std::move(result));
     });
-
-    return result;
+    return f.get();
 }
 
 void Session::do_cleanup()
@@ -477,16 +471,16 @@ void Session::do_cleanup()
         ping_timer_.cancel(ping_timer_id_);
 
     bool stashed = false;
-    if (!window_id_.empty() && app_ && !user_close_ && !app_is_done()) {
+    if (!window_id_.empty() && plugin_ && !user_close_ && !plugin_.isDone()) {
         auto& reg = SessionManager::instance();
-        reg.stashApp(window_id_, std::move(app_), std::move(mod_), app_name_);
-        reg.unregisterSession(app_name_, this);
+        reg.stashPlugin(window_id_, std::move(plugin_), plugin_name_);
+        reg.unregisterSession(plugin_name_, this);
         stashed = true;
-        logger_.info() << "[sess:" << this << "] app stashed for " << window_id_;
+        logger_.info() << "[sess:" << this << "] plugin stashed for " << window_id_;
     }
 
-    if (!stashed && !app_name_.empty()) {
-        SessionManager::instance().unregisterSession(app_name_, this);
+    if (!stashed && !plugin_name_.empty()) {
+        SessionManager::instance().unregisterSession(plugin_name_, this);
         if (!window_id_.empty())
             SessionManager::instance().unregisterWindow(window_id_);
         boost::json::object doneState;
@@ -495,9 +489,8 @@ void Session::do_cleanup()
         doneState["session_id"] = session_id_;
         if (!window_id_.empty()) doneState["window_id"] = window_id_;
         if (!display_name_.empty()) doneState["display_name"] = display_name_;
-        AppStateNotifier::instance().notify(app_name_, boost::json::serialize(doneState));
+        pluginEventBus().fire(PluginStateEvent{plugin_name_, boost::json::value(doneState)});
     }
-    app_.reset();
 }
 
 void Session::close_ws()
@@ -526,10 +519,7 @@ void Session::start_ping()
             }
 
             self->missed_pongs_++;
-            if (self->ws_ && self->ws_->is_open()) {
-                self->ws_->async_ping("",
-                    asio::bind_executor(self->strand_, [](beast::error_code) {}));
-            }
+            self->enqueue(R"({"type":"ping"})");
         });
     });
 }
@@ -540,7 +530,7 @@ void Session::reset_heartbeat()
 }
 
 Listener::Listener(asio::io_context& io, Logger& logger,
-                   IModuleCache& cache, ThreadPool* fallback_pool,
+                   IPluginCache& cache, ThreadPool* fallback_pool,
                    int port)
     : io_(io)
     , acceptor_(io, tcp::endpoint(tcp::v4(), port))
@@ -608,61 +598,60 @@ SessionManager& SessionManager::instance()
     return mgr;
 }
 
-void SessionManager::registerSession(const std::string& appName, std::weak_ptr<Session> session)
+void SessionManager::registerSession(const std::string& pluginName, std::weak_ptr<Session> session)
 {
     std::lock_guard<std::mutex> lock(mtx_);
-    sessions_[appName].push_back(std::move(session));
+    sessions_[pluginName].push_back(std::move(session));
 }
 
-std::shared_ptr<Session> SessionManager::findSession(const std::string& appName, int index)
+void SessionManager::purgeDead(std::vector<std::weak_ptr<Session>>& vec)
 {
-    std::lock_guard<std::mutex> lock(mtx_);
-    auto it = sessions_.find(appName);
-    if (it == sessions_.end())
-        return nullptr;
-    auto& vec = it->second;
     vec.erase(std::remove_if(vec.begin(), vec.end(),
         [](auto& w) {
             auto s = w.lock();
             return !s || !s->is_open();
         }), vec.end());
-    if (vec.empty()) {
+}
+
+std::shared_ptr<Session> SessionManager::findSession(const std::string& pluginName, int index)
+{
+    std::lock_guard<std::mutex> lock(mtx_);
+    auto it = sessions_.find(pluginName);
+    if (it == sessions_.end())
+        return nullptr;
+    purgeDead(it->second);
+    if (it->second.empty()) {
         sessions_.erase(it);
         return nullptr;
     }
-    if (index < 0 || index >= (int)vec.size())
+    if (index < 0 || index >= (int)it->second.size())
         return nullptr;
-    return vec[index].lock();
+    return it->second[index].lock();
 }
 
-std::vector<std::shared_ptr<Session>> SessionManager::findAllSessions(const std::string& appName)
+std::vector<std::shared_ptr<Session>> SessionManager::findAllSessions(const std::string& pluginName)
 {
     std::lock_guard<std::mutex> lock(mtx_);
     std::vector<std::shared_ptr<Session>> result;
-    auto it = sessions_.find(appName);
+    auto it = sessions_.find(pluginName);
     if (it == sessions_.end())
         return result;
-    auto& vec = it->second;
-    vec.erase(std::remove_if(vec.begin(), vec.end(),
-        [](auto& w) {
-            auto s = w.lock();
-            return !s || !s->is_open();
-        }), vec.end());
-    if (vec.empty()) {
+    purgeDead(it->second);
+    if (it->second.empty()) {
         sessions_.erase(it);
         return result;
     }
-    for (auto& w : vec) {
+    for (auto& w : it->second) {
         auto s = w.lock();
         if (s) result.push_back(std::move(s));
     }
     return result;
 }
 
-void SessionManager::unregisterSession(const std::string& appName, Session* ptr)
+void SessionManager::unregisterSession(const std::string& pluginName, Session* ptr)
 {
     std::lock_guard<std::mutex> lock(mtx_);
-    auto it = sessions_.find(appName);
+    auto it = sessions_.find(pluginName);
     if (it == sessions_.end())
         return;
     auto& vec = it->second;
@@ -680,16 +669,11 @@ std::vector<std::pair<std::string, int>> SessionManager::listSessions()
     std::lock_guard<std::mutex> lock(mtx_);
     std::vector<std::pair<std::string, int>> result;
     for (auto it = sessions_.begin(); it != sessions_.end(); ) {
-        auto& vec = it->second;
-        vec.erase(std::remove_if(vec.begin(), vec.end(),
-            [](auto& w) {
-                auto s = w.lock();
-                return !s || !s->is_open();
-            }), vec.end());
-        if (vec.empty()) {
+        purgeDead(it->second);
+        if (it->second.empty()) {
             it = sessions_.erase(it);
         } else {
-            for (int i = 0; i < (int)vec.size(); ++i)
+            for (int i = 0; i < (int)it->second.size(); ++i)
                 result.emplace_back(it->first, i);
             ++it;
         }
@@ -697,10 +681,10 @@ std::vector<std::pair<std::string, int>> SessionManager::listSessions()
     return result;
 }
 
-void SessionManager::registerWindow(const std::string& windowId, const std::string& sessionId, const std::string& appName)
+void SessionManager::registerWindow(const std::string& windowId, const std::string& sessionId, const std::string& pluginName)
 {
     std::lock_guard<std::mutex> lock(mtx_);
-    windowMap_[windowId] = WinInfo{sessionId, appName};
+    windowMap_[windowId] = WinInfo{sessionId, pluginName};
 }
 
 void SessionManager::unregisterWindow(const std::string& windowId)
@@ -709,40 +693,38 @@ void SessionManager::unregisterWindow(const std::string& windowId)
     windowMap_.erase(windowId);
 }
 
-void SessionManager::stashApp(const std::string& windowId, AppPtr app, AppModule mod, std::string appName)
+void SessionManager::stashPlugin(const std::string& windowId, PluginInstance plugin, std::string pluginName)
 {
     if (windowId.empty()) return;
     std::lock_guard<std::mutex> lock(mtx_);
-    StashedApp s;
-    s.app = std::move(app);
-    s.mod = std::move(mod);
-    s.appName = std::move(appName);
+    StashedPlugin s;
+    s.plugin = std::move(plugin);
+    s.pluginName = std::move(pluginName);
     s.at = std::chrono::steady_clock::now();
-    stashedApps_[windowId] = std::move(s);
+    stashedPlugins_[windowId] = std::move(s);
 }
 
-bool SessionManager::restoreApp(const std::string& windowId, AppPtr& outApp, AppModule& outMod, std::string& outAppName)
+bool SessionManager::restorePlugin(const std::string& windowId, PluginInstance& outPlugin, std::string& outPluginName)
 {
     if (windowId.empty()) return false;
     std::lock_guard<std::mutex> lock(mtx_);
-    auto it = stashedApps_.find(windowId);
-    if (it == stashedApps_.end()) return false;
+    auto it = stashedPlugins_.find(windowId);
+    if (it == stashedPlugins_.end()) return false;
     if (stashTtlSec_ > 0 && std::chrono::steady_clock::now() - it->second.at > std::chrono::seconds(stashTtlSec_)) {
-        stashedApps_.erase(it);
+        stashedPlugins_.erase(it);
         return false;
     }
-    outApp = std::move(it->second.app);
-    outMod = std::move(it->second.mod);
-    outAppName = std::move(it->second.appName);
-    stashedApps_.erase(it);
+    outPlugin = std::move(it->second.plugin);
+    outPluginName = std::move(it->second.pluginName);
+    stashedPlugins_.erase(it);
     return true;
 }
 
-void SessionManager::removeStashedApp(const std::string& windowId)
+void SessionManager::removeStashedPlugin(const std::string& windowId)
 {
     if (windowId.empty()) return;
     std::lock_guard<std::mutex> lock(mtx_);
-    stashedApps_.erase(windowId);
+    stashedPlugins_.erase(windowId);
 }
 
 boost::json::array SessionManager::listActiveWindows()
@@ -750,25 +732,20 @@ boost::json::array SessionManager::listActiveWindows()
     std::lock_guard<std::mutex> lock(mtx_);
     boost::json::array result;
     for (auto it = sessions_.begin(); it != sessions_.end(); ) {
-        auto& vec = it->second;
-        vec.erase(std::remove_if(vec.begin(), vec.end(),
-            [](auto& w) {
-                auto s = w.lock();
-                return !s || !s->is_open();
-            }), vec.end());
-        if (vec.empty()) {
+        purgeDead(it->second);
+        if (it->second.empty()) {
             it = sessions_.erase(it);
             continue;
         }
-        auto& appName = it->first;
+        auto& pluginName = it->first;
         int idx = 0;
-        for (auto& w : vec) {
+        for (auto& w : it->second) {
             auto s = w.lock();
             if (!s) continue;
             boost::json::object entry;
             entry["window_id"] = s->window_id();
             entry["session_id"] = s->session_id();
-            entry["app"] = appName;
+            entry["plugin"] = pluginName;
             entry["instance"] = idx++;
             if (!s->display_name().empty())
                 entry["display_name"] = s->display_name();
@@ -780,11 +757,11 @@ boost::json::array SessionManager::listActiveWindows()
 }
 
 // ============================================================
-//  AppStateNotifier
+//  pluginEventBus
 // ============================================================
 
-AppStateNotifier& AppStateNotifier::instance()
+EventBus& pluginEventBus()
 {
-    static AppStateNotifier notifier;
-    return notifier;
+    static EventBus bus;
+    return bus;
 }

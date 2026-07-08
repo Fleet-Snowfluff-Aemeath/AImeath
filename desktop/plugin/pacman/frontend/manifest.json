@@ -1,0 +1,39 @@
+{
+  "name": "pacman",
+  "display_name": "吃豆人",
+  "type": "game",
+  "library": "libpacman.so",
+  "icon": "/res/C220748556D18ADBC61177B1A5A8151D.png",
+  "frontend": {
+    "size": 20,
+    "clickGame": false,
+    "styles": {
+      "@": { "background": "yellow", "borderRadius": "50%" },
+      "*": { "background": "white", "borderRadius": "50%" },
+      " ": { "background": "#111" }
+    }
+  },
+  "tools": [
+    {
+      "name": "control_plugin",
+      "description": "Control pacman direction. 0=up 1=down 2=left 3=right",
+      "handler": "game_tick",
+      "params": {
+        "type": "object",
+        "properties": {
+          "value": { "type": "integer", "description": "Direction value" }
+        },
+        "required": ["value"]
+      }
+    },
+    {
+      "name": "get_plugin_state",
+      "description": "Get current pacman game state",
+      "handler": "game_state",
+      "params": {
+        "type": "object",
+        "properties": {}
+      }
+    }
+  ]
+}

@@ -1,6 +1,6 @@
-import { createApp } from 'vue'
+import { createPlugin } from 'vue'
 import { createRouter, createWebHashHistory } from 'vue-router'
-import App from './App.vue'
+import Plugin from './App.vue'
 import HomePage from './views/HomePage.vue'
 import FileViewer from './views/FileViewer.vue'
 import { APPS } from './config/games.js'
@@ -20,4 +20,4 @@ const router = createRouter({
   routes,
 })
 
-createApp(App).use(router).mount('#app')
+createPlugin(Plugin).use(router).mount('#plugin')

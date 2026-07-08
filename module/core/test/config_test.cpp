@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 #include "config.hpp"
 #include "ws_server.hpp"
-#include "app_mod.hpp"
+#include "plugin_mod.hpp"
 #include <boost/asio.hpp>
 #include <boost/json.hpp>
 
@@ -20,14 +20,14 @@ TEST(ConfigTest, GetStringUsesDefault)
     EXPECT_EQ(cfg.getString("__nonexistent_key__", "fallback"), "fallback");
 }
 
-// ====== SessionManager (limited â€?full Session needs WS upgrade) ======
+// ====== SessionManager (limited ï¿½?full Session needs WS upgrade) ======
 
 class SessionManagerTest : public ::testing::Test
 {
 protected:
     asio::io_context io;
     Logger logger = Logger(Logger::WARN);
-    AppModuleCache cache;
+    PluginModuleCache cache;
     ThreadPool fallback{1};
     SessionManager& reg = SessionManager::instance();
 
@@ -63,16 +63,16 @@ TEST_F(SessionManagerTest, RegisterAndUnregisterSession)
 {
     auto sess = createSession("win_a");
     std::string sid = sess->session_id();
-    reg.registerSession("test_app", sess);
-    // unregister and verify no crash â€?actual find requires is_open() which needs WS upgrade
-    reg.unregisterSession("test_app", sess.get());
+    reg.registerSession("test_plugin", sess);
+    // unregister and verify no crash ï¿½?actual find requires is_open() which needs WS upgrade
+    reg.unregisterSession("test_plugin", sess.get());
     reg.unregisterWindow("win_a");
 }
 
 TEST_F(SessionManagerTest, RegisterAndUnregisterWindow)
 {
     auto sess = createSession("win_b");
-    reg.registerWindow("win_b", sess->session_id(), "test_app");
+    reg.registerWindow("win_b", sess->session_id(), "test_plugin");
     reg.unregisterWindow("win_b");
 }
 

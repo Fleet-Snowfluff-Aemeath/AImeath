@@ -22,6 +22,7 @@ export function createGameSocket(game, width = 20, height = 20) {
     if (DNAME) p.display_name = DNAME
     ch.send(p)
   })
+  ch.on('ping', () => ch.send({ type: 'pong' }))
   ch.onMessage(data => stateListeners.forEach(fn => fn(data)))
   ch.onError(() => stateListeners.forEach(fn => fn({ type: 'error', msg: 'Connection error' })))
   ch.onReconnecting(({ attempt, max, delay }) =>

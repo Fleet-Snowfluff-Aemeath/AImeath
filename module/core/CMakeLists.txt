@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.12)
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     project(core LANGUAGES CXX)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../app ${CMAKE_BINARY_DIR}/app)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../plugin ${CMAKE_BINARY_DIR}/plugin)
 endif()
 
 set(CMAKE_CXX_STANDARD 17)
@@ -29,7 +29,7 @@ file(GLOB TEST_SOURCES CONFIGURE_DEPENDS
 )
 add_executable(tests ${TEST_SOURCES})
 set_target_properties(tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/output/test)
-target_link_libraries(tests core app GTest::GTest GTest::Main)
+target_link_libraries(tests core plugin GTest::GTest GTest::Main)
 target_include_directories(tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 add_custom_target(run_tests
     COMMAND ${CMAKE_COMMAND} -E env LD_LIBRARY_PATH=${CMAKE_BINARY_DIR}/output/lib $<TARGET_FILE:tests>

@@ -1,13 +1,4 @@
-/**
- * AImeath �?统一 WebSocket 服务端（全异步架构）
- *
- * 端口�?config.json �?"port" 字段读取，默�?3001�?
- * 每个连接�?shared_ptr<Session> 管理生命周期�?
- * 通过 async_read / async_write 处理 WebSocket 消息�?
- * Session / Listener 定义�?module/core/include/ws_server.hpp
- */
-
-#include <iostream>
+#include <fstream>
 #include <thread>
 #include <memory>
 
@@ -18,39 +9,42 @@
 #include "threadmgr.hpp"
 #include "logger.hpp"
 #include "ws_server.hpp"
-#include "app_mod.hpp"
-#include "app_manager.hpp"
+#include "plugin_cache.hpp"
+#include "plugin_manager.hpp"
 
 namespace asio  = boost::asio;
 namespace beast = boost::beast;
 
 int main()
 {
-    Logger logger(std::cout, Logger::INFO);
+    std::ofstream logFile("logserver.log", std::ios::app);
+    Logger logger(logFile, Logger::INFO);
 
     int port = Config::instance().port();
     int io_threads = Config::instance().ioThreads();
     int fb_threads = Config::instance().fallbackThreads();
     int max_conn = Config::instance().maxConnections();
     int stash_ttl = Config::instance().stashTtlSec();
-    logger.info() << "Port: " << port
-                  << " IO threads: " << io_threads
-                  << " Fallback threads: " << fb_threads
-                  << " Max connections: " << (max_conn > 0 ? std::to_string(max_conn) : "unlimited")
+    logger.info("main") << "Port: " << port
                   << " Stash TTL: " << (stash_ttl > 0 ? std::to_string(stash_ttl) + "s" : "unlimited");
 
     ThreadPool io_pool(io_threads);
     auto& io = io_pool.io_context();
+    logger.info("main") << "Starting io_pool with " << io_threads << " IO threads.";
 
     ThreadPool fallback_pool(fb_threads);
     if (max_conn > 0) {
         fallback_pool.set_max_queue_size(static_cast<size_t>(max_conn) / 10);
     }
-    AppManager::instance().init(&AppModuleCache::instance());
+    logger.info("main") << "Starting fallback_pool with " << fb_threads << " threads. Max connections: "
+        << (max_conn > 0 ? std::to_string(max_conn) : "unlimited");
+
+    PluginManager::instance().init(&PluginCache::instance());
+    logger.info("main") << "PluginManager initialized.";
 
     SessionManager::instance().setStashTtlSec(stash_ttl);
 
-    auto listener = std::make_shared<Listener>(io, logger, AppModuleCache::instance(), &fallback_pool, port);
+    auto listener = std::make_shared<Listener>(io, logger, PluginCache::instance(), &fallback_pool, port);
     if (max_conn > 0)
         listener->set_max_connections(max_conn);
     listener->run();
@@ -59,13 +53,13 @@ int main()
     asio::signal_set signals(sig_io, SIGINT, SIGTERM);
     signals.async_wait([&listener, &logger](auto ec, auto sig) {
         if (!ec) {
-            logger.info() << "Signal " << sig << " received, shutting down...";
+            logger.info("main") << "Signal " << sig << " received, shutting down...";
             listener->shutdown();
         }
     });
     std::thread sig_thread([&sig_io] { sig_io.run(); });
 
-    logger.info() << "Game server listening on port " << port;
+    logger.info("main") << "Game server listening on port " << port;
 
     io.run();
 

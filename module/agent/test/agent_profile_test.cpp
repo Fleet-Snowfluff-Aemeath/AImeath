@@ -59,7 +59,7 @@ TEST(AgentProfileTest, LoadWithTools) {
     writeTestYaml(R"(
 name: "工具代理"
 tools:
-  - open_app
+  - open_plugin
   - terminal_exec
   - chat_send
 )");
@@ -67,7 +67,7 @@ tools:
     EXPECT_EQ(profile.name, "工具代理");
     EXPECT_TRUE(profile.enable_tools);
     ASSERT_EQ(profile.tools.size(), 3u);
-    EXPECT_EQ(profile.tools[0], "open_app");
+    EXPECT_EQ(profile.tools[0], "open_plugin");
     EXPECT_EQ(profile.tools[1], "terminal_exec");
     EXPECT_EQ(profile.tools[2], "chat_send");
     cleanup();

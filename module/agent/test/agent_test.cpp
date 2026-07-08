@@ -75,9 +75,9 @@ TEST(AgentServerTest, SetIoContextDoesNotCrash)
     ptr->destroy();
 }
 
-// ====== openApp / controlApp / closeApp ======
+// ====== openPlugin / controlPlugin / closePlugin ======
 
-TEST(AgentServerTest, OpenAppSendsOutput)
+TEST(AgentServerTest, OpenPluginSendsOutput)
 {
     auto ptr = std::make_shared<agent::AgentServer>();
     std::string output;
@@ -88,35 +88,35 @@ TEST(AgentServerTest, OpenAppSendsOutput)
         },
         &output);
 
-    ptr->openApp("snake", "{\"width\":20}");
+    ptr->openPlugin("snake", "{\"width\":20}");
     EXPECT_FALSE(output.empty());
 
     auto val = boost::json::parse(output);
     EXPECT_TRUE(val.is_object());
     auto& obj = val.as_object();
     EXPECT_EQ(obj["type"].as_string(), std::string("agent"));
-    EXPECT_EQ(obj["action"].as_string(), std::string("open_app"));
-    EXPECT_EQ(obj["app"].as_string(), std::string("snake"));
+    EXPECT_EQ(obj["action"].as_string(), std::string("open_plugin"));
+    EXPECT_EQ(obj["plugin"].as_string(), std::string("snake"));
 
     ptr->destroy();
 }
 
-TEST(AgentServerTest, OpenAppReturnsTrue)
+TEST(AgentServerTest, OpenPluginReturnsTrue)
 {
     auto ptr = std::make_shared<agent::AgentServer>();
-    EXPECT_TRUE(ptr->openApp("snake", "{}"));
+    EXPECT_TRUE(ptr->openPlugin("snake", "{}"));
     ptr->destroy();
 }
 
-TEST(AgentServerTest, OpenAppWithoutOutputDoesNotCrash)
+TEST(AgentServerTest, OpenPluginWithoutOutputDoesNotCrash)
 {
     auto ptr = std::make_shared<agent::AgentServer>();
-    EXPECT_NO_THROW(ptr->openApp("snake", "{\"width\":20}"));
-    EXPECT_NO_THROW(ptr->closeApp("snake"));
+    EXPECT_NO_THROW(ptr->openPlugin("snake", "{\"width\":20}"));
+    EXPECT_NO_THROW(ptr->closePlugin("snake"));
     ptr->destroy();
 }
 
-TEST(AgentServerTest, ControlAppSendsOutput)
+TEST(AgentServerTest, ControlPluginSendsOutput)
 {
     auto ptr = std::make_shared<agent::AgentServer>();
     std::string output;
@@ -127,26 +127,26 @@ TEST(AgentServerTest, ControlAppSendsOutput)
         },
         &output);
 
-    ptr->controlApp("snake", "{\"value\":3}");
+    ptr->controlPlugin("snake", "{\"value\":3}");
     EXPECT_FALSE(output.empty());
 
     auto val = boost::json::parse(output);
     EXPECT_TRUE(val.is_object());
     auto& obj = val.as_object();
     EXPECT_EQ(obj["type"].as_string(), std::string("agent"));
-    EXPECT_EQ(obj["action"].as_string(), std::string("control_app"));
+    EXPECT_EQ(obj["action"].as_string(), std::string("control_plugin"));
 
     ptr->destroy();
 }
 
-TEST(AgentServerTest, ControlAppReturnsTrue)
+TEST(AgentServerTest, ControlPluginReturnsTrue)
 {
     auto ptr = std::make_shared<agent::AgentServer>();
-    EXPECT_TRUE(ptr->controlApp("snake", "{\"value\":3}"));
+    EXPECT_TRUE(ptr->controlPlugin("snake", "{\"value\":3}"));
     ptr->destroy();
 }
 
-TEST(AgentServerTest, CloseAppSendsOutput)
+TEST(AgentServerTest, ClosePluginSendsOutput)
 {
     auto ptr = std::make_shared<agent::AgentServer>();
     std::string output;
@@ -157,21 +157,21 @@ TEST(AgentServerTest, CloseAppSendsOutput)
         },
         &output);
 
-    ptr->closeApp("snake");
+    ptr->closePlugin("snake");
     EXPECT_FALSE(output.empty());
 
     auto val = boost::json::parse(output);
     EXPECT_TRUE(val.is_object());
     auto& obj = val.as_object();
-    EXPECT_EQ(obj["action"].as_string(), std::string("close_app"));
+    EXPECT_EQ(obj["action"].as_string(), std::string("close_plugin"));
 
     ptr->destroy();
 }
 
-TEST(AgentServerTest, CloseAppReturnsTrue)
+TEST(AgentServerTest, ClosePluginReturnsTrue)
 {
     auto ptr = std::make_shared<agent::AgentServer>();
-    EXPECT_TRUE(ptr->closeApp("snake"));
+    EXPECT_TRUE(ptr->closePlugin("snake"));
     ptr->destroy();
 }
 
@@ -459,32 +459,32 @@ TEST(AgentServerTest, TerminalStdinEmptyData)
     ptr->destroy();
 }
 
-// ====== get_app_state for chat, filemanager, terminal ======
+// ====== get_plugin_state for chat, filemanager, terminal ======
 
-TEST(AgentServerTest, GetAppStateChat)
+TEST(AgentServerTest, GetPluginStateChat)
 {
     auto ptr = std::make_shared<agent::AgentServer>();
-    EXPECT_NO_THROW(ptr->controlApp("chat", "{\"action\":\"poll\"}"));
+    EXPECT_NO_THROW(ptr->controlPlugin("chat", "{\"action\":\"poll\"}"));
     ptr->destroy();
 }
 
-TEST(AgentServerTest, GetAppStateFilemanager)
+TEST(AgentServerTest, GetPluginStateFilemanager)
 {
     auto ptr = std::make_shared<agent::AgentServer>();
-    EXPECT_NO_THROW(ptr->controlApp("filemanager", "{\"action\":\"list\",\"path\":\"/\"}"));
+    EXPECT_NO_THROW(ptr->controlPlugin("filemanager", "{\"action\":\"list\",\"path\":\"/\"}"));
     ptr->destroy();
 }
 
-TEST(AgentServerTest, GetAppStateTerminal)
+TEST(AgentServerTest, GetPluginStateTerminal)
 {
     auto ptr = std::make_shared<agent::AgentServer>();
-    EXPECT_NO_THROW(ptr->controlApp("terminal", "{\"action\":\"resize\"}"));
+    EXPECT_NO_THROW(ptr->controlPlugin("terminal", "{\"action\":\"resize\"}"));
     ptr->destroy();
 }
 
 // ====== open/close for chat, filemanager, terminal ======
 
-TEST(AgentServerTest, OpenAppChat)
+TEST(AgentServerTest, OpenPluginChat)
 {
     auto ptr = std::make_shared<agent::AgentServer>();
     std::string output;
@@ -494,14 +494,14 @@ TEST(AgentServerTest, OpenAppChat)
         },
         &output);
 
-    ptr->openApp("chat", "{}");
+    ptr->openPlugin("chat", "{}");
     EXPECT_FALSE(output.empty());
     auto val = boost::json::parse(output);
-    EXPECT_EQ(val.as_object()["app"].as_string(), std::string("chat"));
+    EXPECT_EQ(val.as_object()["plugin"].as_string(), std::string("chat"));
     ptr->destroy();
 }
 
-TEST(AgentServerTest, OpenAppFilemanager)
+TEST(AgentServerTest, OpenPluginFilemanager)
 {
     auto ptr = std::make_shared<agent::AgentServer>();
     std::string output;
@@ -511,14 +511,14 @@ TEST(AgentServerTest, OpenAppFilemanager)
         },
         &output);
 
-    ptr->openApp("filemanager", "{}");
+    ptr->openPlugin("filemanager", "{}");
     EXPECT_FALSE(output.empty());
     auto val = boost::json::parse(output);
-    EXPECT_EQ(val.as_object()["app"].as_string(), std::string("filemanager"));
+    EXPECT_EQ(val.as_object()["plugin"].as_string(), std::string("filemanager"));
     ptr->destroy();
 }
 
-TEST(AgentServerTest, OpenAppTerminal)
+TEST(AgentServerTest, OpenPluginTerminal)
 {
     auto ptr = std::make_shared<agent::AgentServer>();
     std::string output;
@@ -528,14 +528,14 @@ TEST(AgentServerTest, OpenAppTerminal)
         },
         &output);
 
-    ptr->openApp("terminal", "{}");
+    ptr->openPlugin("terminal", "{}");
     EXPECT_FALSE(output.empty());
     auto val = boost::json::parse(output);
-    EXPECT_EQ(val.as_object()["app"].as_string(), std::string("terminal"));
+    EXPECT_EQ(val.as_object()["plugin"].as_string(), std::string("terminal"));
     ptr->destroy();
 }
 
-TEST(AgentServerTest, CloseAppChat)
+TEST(AgentServerTest, ClosePluginChat)
 {
     auto ptr = std::make_shared<agent::AgentServer>();
     std::string output;
@@ -545,14 +545,14 @@ TEST(AgentServerTest, CloseAppChat)
         },
         &output);
 
-    ptr->closeApp("chat");
+    ptr->closePlugin("chat");
     EXPECT_FALSE(output.empty());
     auto val = boost::json::parse(output);
-    EXPECT_EQ(val.as_object()["app"].as_string(), std::string("chat"));
+    EXPECT_EQ(val.as_object()["plugin"].as_string(), std::string("chat"));
     ptr->destroy();
 }
 
-TEST(AgentServerTest, CloseAppFilemanager)
+TEST(AgentServerTest, ClosePluginFilemanager)
 {
     auto ptr = std::make_shared<agent::AgentServer>();
     std::string output;
@@ -562,14 +562,14 @@ TEST(AgentServerTest, CloseAppFilemanager)
         },
         &output);
 
-    ptr->closeApp("filemanager");
+    ptr->closePlugin("filemanager");
     EXPECT_FALSE(output.empty());
     auto val = boost::json::parse(output);
-    EXPECT_EQ(val.as_object()["app"].as_string(), std::string("filemanager"));
+    EXPECT_EQ(val.as_object()["plugin"].as_string(), std::string("filemanager"));
     ptr->destroy();
 }
 
-TEST(AgentServerTest, CloseAppTerminal)
+TEST(AgentServerTest, ClosePluginTerminal)
 {
     auto ptr = std::make_shared<agent::AgentServer>();
     std::string output;
@@ -579,10 +579,10 @@ TEST(AgentServerTest, CloseAppTerminal)
         },
         &output);
 
-    ptr->closeApp("terminal");
+    ptr->closePlugin("terminal");
     EXPECT_FALSE(output.empty());
     auto val = boost::json::parse(output);
-    EXPECT_EQ(val.as_object()["app"].as_string(), std::string("terminal"));
+    EXPECT_EQ(val.as_object()["plugin"].as_string(), std::string("terminal"));
     ptr->destroy();
 }
 
@@ -610,96 +610,96 @@ TEST(AgentServerTest, MultipleAgentsIndependent)
 // ====== C ABI ======
 
 extern "C" {
-    void* app_create(const char* config);
-    void  app_destroy(void* p);
-    void  app_set_output(void* p, app_output_fn cb, void* udata);
-    int   app_is_done(void* p);
-    void  app_on_input(void* p, const char* json);
-    char* app_process(void* p, const char* json);
-    void  app_free_string(char* s);
+    void* plugin_create(const char* config);
+    void  plugin_destroy(void* p);
+    void  plugin_set_output(void* p, plugin_output_fn cb, void* udata);
+    int   plugin_is_done(void* p);
+    void  plugin_on_input(void* p, const char* json);
+    char* plugin_process(void* p, const char* json);
+    void  plugin_free_string(char* s);
 }
 
 TEST(AgentServerTest, CApiCreateDestroy)
 {
-    void* app = app_create(nullptr);
-    ASSERT_NE(app, nullptr);
-    EXPECT_EQ(app_is_done(app), 0);
-    app_destroy(app);
+    void* plugin = plugin_create(nullptr);
+    ASSERT_NE(plugin, nullptr);
+    EXPECT_EQ(plugin_is_done(plugin), 0);
+    plugin_destroy(plugin);
 }
 
 TEST(AgentServerTest, CApiMultipleCreateDestroy)
 {
     for (int i = 0; i < 5; ++i)
     {
-        void* app = app_create(nullptr);
-        ASSERT_NE(app, nullptr);
-        app_destroy(app);
+        void* plugin = plugin_create(nullptr);
+        ASSERT_NE(plugin, nullptr);
+        plugin_destroy(plugin);
     }
 }
 
 TEST(AgentServerTest, CApiProcess)
 {
-    void* app = app_create(nullptr);
-    char* s = app_process(app, R"({"text":"hello"})");
+    void* plugin = plugin_create(nullptr);
+    char* s = plugin_process(plugin, R"({"text":"hello"})");
     ASSERT_NE(s, nullptr);
     std::string result(s);
     EXPECT_FALSE(result.empty());
-    app_free_string(s);
-    app_destroy(app);
+    plugin_free_string(s);
+    plugin_destroy(plugin);
 }
 
 TEST(AgentServerTest, CApiOnInputStop)
 {
-    void* app = app_create(nullptr);
-    app_on_input(app, R"({"action":"stop"})");
-    EXPECT_EQ(app_is_done(app), 1);
-    app_destroy(app);
+    void* plugin = plugin_create(nullptr);
+    plugin_on_input(plugin, R"({"action":"stop"})");
+    EXPECT_EQ(plugin_is_done(plugin), 1);
+    plugin_destroy(plugin);
 }
 
 TEST(AgentServerTest, CApiSetOutput)
 {
-    void* app = app_create(nullptr);
+    void* plugin = plugin_create(nullptr);
     std::string received;
-    EXPECT_NO_THROW(app_set_output(app,
+    EXPECT_NO_THROW(plugin_set_output(plugin,
         [](void* udata, const char* json) {
             *static_cast<std::string*>(udata) = json;
         },
         &received));
-    app_destroy(app);
+    plugin_destroy(plugin);
 }
 
 TEST(AgentServerTest, CApiFullLifecycle)
 {
-    void* app = app_create(nullptr);
-    ASSERT_NE(app, nullptr);
-    EXPECT_EQ(app_is_done(app), 0);
+    void* plugin = plugin_create(nullptr);
+    ASSERT_NE(plugin, nullptr);
+    EXPECT_EQ(plugin_is_done(plugin), 0);
 
     std::string received;
-    app_set_output(app,
+    plugin_set_output(plugin,
         [](void* udata, const char* json) {
             *static_cast<std::string*>(udata) = json;
         },
         &received);
 
-    app_on_input(app, R"({"action":"stop"})");
-    EXPECT_EQ(app_is_done(app), 1);
+    plugin_on_input(plugin, R"({"action":"stop"})");
+    EXPECT_EQ(plugin_is_done(plugin), 1);
     EXPECT_FALSE(received.empty());
 
     auto val = boost::json::parse(received);
     EXPECT_EQ(val.as_object()["type"].as_string(), std::string("stream_end"));
 
-    app_destroy(app);
+    plugin_destroy(plugin);
 }
 
 TEST(AgentServerTest, CApiProcessWithEmptyInput)
 {
-    void* app = app_create(nullptr);
-    char* s = app_process(app, "");
+    void* plugin = plugin_create(nullptr);
+    char* s = plugin_process(plugin, "");
     ASSERT_NE(s, nullptr);
     std::string result(s);
     auto val = boost::json::parse(result);
     EXPECT_TRUE(val.is_array());
     EXPECT_TRUE(val.as_array().empty());
-    app_free_string(s);
-    app_destroy(app);
+    plugin_free_string(s);
+    plugin_destroy(plugin);
 }

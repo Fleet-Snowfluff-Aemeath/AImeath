@@ -110,8 +110,8 @@ static void BM_LlmToolCallPopulated(benchmark::State& state)
         LlmToolCall tc;
         tc.id = "call_abc123";
         tc.type = "function";
-        tc.function_name = "open_app";
-        tc.function_arguments = "{\"app\":\"snake\"}";
+        tc.function_name = "open_plugin";
+        tc.function_arguments = "{\"plugin\":\"snake\"}";
         benchmark::DoNotOptimize(tc);
     }
 }

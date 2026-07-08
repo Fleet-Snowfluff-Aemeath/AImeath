@@ -59,7 +59,7 @@ bool alive = timer.exists(id);
 ```cpp
 Logger log(Logger::INFO);              // 默认输出到 std::cerr
 log.info() << "hello " << 42;
-Logger file_log("/var/log/app.log");   // 输出到文件
+Logger file_log("/var/log/plugin.log");   // 输出到文件
 file_log.warn() << "warning";
 Logger custom(std::cout, Logger::DEBUG); // 指定流
 custom.debug() << "这条会输出";         // DEBUG 级别可见
@@ -157,7 +157,7 @@ int n = jsonParseInt(msg, "count");                             // 从 JSON 提�
 ```cpp
 ThreadPool fallback(DEFAULT_FALLBACK_THREADS);
 Logger log(Logger::INFO);
-AppModuleCache cache;
+PluginModuleCache cache;
 asio::io_context io;
 
 auto listener = std::make_shared<Listener>(io, log, cache, &fallback, 3001);
@@ -167,8 +167,8 @@ io.run();
 
 设计要点：
 - `Listener`：async_accept 循环，每个连接创建 `Session`
-- `Session`：HTTP Upgrade → 首消息路由 → 异步/遗留双模 app 处理
+- `Session`：HTTP Upgrade → 首消息路由 → 异步/遗留双模 plugin 处理
 - 写队列串行化：`async_write` 完成后再发下一条，避免帧交错
-- 路由策略：首消息 JSON 中依次查找 `app`/`text`/`game` 字段确定目标 app
-- 异步模式优先：若 app 支持 `app_on_input`/`app_set_output`，走异步回调模式；否则走 `app_process` 遗留模式提交到 fallback_pool
-- 依赖 `app_mod.hpp`（app 模块）进行动态加载和 app 实例管理
+- 路由策略：首消息 JSON 中依次查找 `plugin`/`text`/`game` 字段确定目标 plugin
+- 异步模式优先：若 plugin 支持 `plugin_on_input`/`plugin_set_output`，走异步回调模式；否则走 `plugin_process` 遗留模式提交到 fallback_pool
+- 依赖 `plugin_mod.hpp`（plugin 模块）进行动态加载和 plugin 实例管理

@@ -1,0 +1,6 @@
+[2026-07-09 01:50:01.698] [INFO|main] Port: 3091 Stash TTL: unlimited
+[2026-07-09 01:50:01.698] [INFO|main] Starting io_pool with 8 IO threads.
+[2026-07-09 01:50:01.698] [INFO|main] Starting fallback_pool with 8 threads. Max connections: 100000
+[2026-07-09 01:50:01.698] [INFO|main] PluginManager initialized.
+[2026-07-09 01:50:01.698] [INFO|main] Game server listening on port 3091
+[2026-07-09 01:50:05.646] [INFO|main] Signal 2 received, shutting down...

@@ -61,7 +61,7 @@
 
 ### ws_server_test.cpp（10 个测试）
 - 常量验证：`DEFAULT_PORT`、`DEFAULT_IO_THREADS`、`DEFAULT_FALLBACK_THREADS`
-- 命名空间验证：`key::APP`/`key::TEXT`/`key::GAME`、`appname::CHAT`/`appname::SNAKE`
+- 命名空间验证：`key::APP`/`key::TEXT`/`key::GAME`、`pluginname::CHAT`/`pluginname::SNAKE`
 - `Listener` 构造和 shutdown（默认端口和自定义端口）
 - `Session` 构造（有/无 fallback_pool）
 

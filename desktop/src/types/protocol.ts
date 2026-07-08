@@ -1,6 +1,6 @@
 export interface WsRequest {
   action: string
-  app?: string
+  plugin?: string
   game?: string
   width?: number
   height?: number

@@ -23,7 +23,7 @@ async function main() {
 
   console.log('[1/5] create terminal');
   var r1 = await connectAndCollect({
-    app: 'terminal', action: 'exec',
+    plugin: 'terminal', action: 'exec',
     cmd: 'bash --norc',
     window_id: WID, display_name: 'test'
   }, 3);
@@ -44,7 +44,7 @@ async function main() {
 
   console.log('[4/5] reconnect resume');
   var r2 = await connectAndCollect({
-    app: 'terminal', action: 'resume', window_id: WID
+    plugin: 'terminal', action: 'resume', window_id: WID
   }, 3);
   var hasSession = r2.out.some(function(r) { return r.type === 'session'; });
   console.log('  session: ' + hasSession);

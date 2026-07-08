@@ -400,10 +400,10 @@ TEST(LlmUtilsTest, GetToolsFromYaml)
         EXPECT_EQ(obj["type"].as_string(), std::string("function"));
         names.insert(obj["function"].as_object()["name"].as_string().c_str());
     }
-    EXPECT_TRUE(names.count("open_app"));
-    EXPECT_TRUE(names.count("control_app"));
-    EXPECT_TRUE(names.count("close_app"));
-    EXPECT_TRUE(names.count("get_app_state"));
+    EXPECT_TRUE(names.count("open_plugin"));
+    EXPECT_TRUE(names.count("control_plugin"));
+    EXPECT_TRUE(names.count("close_plugin"));
+    EXPECT_TRUE(names.count("get_plugin_state"));
 }
 
 TEST(LlmUtilsTest, GetToolsCount)
@@ -443,13 +443,13 @@ TEST(LlmUtilsTest, MergeToolCallsBasic)
     std::vector<LlmToolCall> chunks;
     LlmToolCall tc;
     tc.id = "call_1";
-    tc.function_name = "open_app";
-    tc.function_arguments = "{\"app\":\"snake\"}";
+    tc.function_name = "open_plugin";
+    tc.function_arguments = "{\"plugin\":\"snake\"}";
     chunks.push_back(tc);
 
     auto merged = llm::merge_tool_calls(chunks);
     EXPECT_EQ(merged.size(), 1u);
-    EXPECT_EQ(merged["call_1"].function_name, "open_app");
+    EXPECT_EQ(merged["call_1"].function_name, "open_plugin");
 }
 
 TEST(LlmUtilsTest, MergeToolCallsChunked)
@@ -458,18 +458,18 @@ TEST(LlmUtilsTest, MergeToolCallsChunked)
 
     LlmToolCall tc1;
     tc1.id = "call_1";
-    tc1.function_name = "open_app";
-    tc1.function_arguments = "{\"app\":";
+    tc1.function_name = "open_plugin";
+    tc1.function_arguments = "{\"plugin\":";
     chunks.push_back(tc1);
 
     LlmToolCall tc2;
-    tc2.function_name = "open_app";
+    tc2.function_name = "open_plugin";
     tc2.function_arguments = "\"snake\"}";
     chunks.push_back(tc2);
 
     auto merged = llm::merge_tool_calls(chunks);
     EXPECT_EQ(merged.size(), 1u);
-    EXPECT_EQ(merged["call_1"].function_arguments, "{\"app\":\"snake\"}");
+    EXPECT_EQ(merged["call_1"].function_arguments, "{\"plugin\":\"snake\"}");
 }
 
 TEST(LlmUtilsTest, MergeToolCallsMultipleIds)
@@ -478,20 +478,20 @@ TEST(LlmUtilsTest, MergeToolCallsMultipleIds)
 
     LlmToolCall tc1;
     tc1.id = "call_a";
-    tc1.function_name = "open_app";
-    tc1.function_arguments = "{\"app\":\"snake\"}";
+    tc1.function_name = "open_plugin";
+    tc1.function_arguments = "{\"plugin\":\"snake\"}";
     chunks.push_back(tc1);
 
     LlmToolCall tc2;
     tc2.id = "call_b";
-    tc2.function_name = "close_app";
-    tc2.function_arguments = "{\"app\":\"snake\"}";
+    tc2.function_name = "close_plugin";
+    tc2.function_arguments = "{\"plugin\":\"snake\"}";
     chunks.push_back(tc2);
 
     auto merged = llm::merge_tool_calls(chunks);
     EXPECT_EQ(merged.size(), 2u);
-    EXPECT_EQ(merged["call_a"].function_name, "open_app");
-    EXPECT_EQ(merged["call_b"].function_name, "close_app");
+    EXPECT_EQ(merged["call_a"].function_name, "open_plugin");
+    EXPECT_EQ(merged["call_b"].function_name, "close_plugin");
 }
 
 TEST(LlmUtilsTest, MergeToolCallsEmpty)
@@ -512,13 +512,13 @@ TEST(LlmUtilsTest, MergeToolCallsWithoutNameInFirstChunk)
 
     LlmToolCall tc2;
     tc2.id = "call_x";
-    tc2.function_name = "list_apps";
+    tc2.function_name = "list_plugins";
     tc2.function_arguments = "1}";
     chunks.push_back(tc2);
 
     auto merged = llm::merge_tool_calls(chunks);
     EXPECT_EQ(merged.size(), 1u);
-    EXPECT_EQ(merged["call_x"].function_name, "list_apps");
+    EXPECT_EQ(merged["call_x"].function_name, "list_plugins");
     EXPECT_EQ(merged["call_x"].function_arguments, "{\"x\":1}");
 }
 

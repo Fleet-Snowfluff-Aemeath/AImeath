@@ -14,7 +14,7 @@
 #include "llm_utils.hpp"
 #include "config.hpp"
 #include "ws_server.hpp"
-#include "app_mod.hpp"
+#include "plugin_cache.hpp"
 #include "tool_registry.hpp"
 
 namespace asio = boost::asio;
@@ -77,15 +77,15 @@ void AgentServer::ensureSubscribed()
     if (subHandle_ != 0) return;
     try {
         std::weak_ptr<AgentServer> weakSelf = selfHolder_;
-        subHandle_ = AppManager::instance().subscribe(
-            [weakSelf](const std::string& appName, const boost::json::value& state) {
+        subHandle_ = PluginManager::instance().subscribe(
+            [weakSelf](const std::string& pluginName, const boost::json::value& state) {
                 auto s = weakSelf.lock();
-                if (s) s->onAppStateChange(appName, state);
+                if (s) s->onPluginStateChange(pluginName, state);
             });
     } catch (...) {}
 }
 
-void AgentServer::setOutput(app_output_fn cb, void* udata)
+void AgentServer::setOutput(plugin_output_fn cb, void* udata)
 {
     ensureSubscribed();
     std::lock_guard<std::mutex> lock(mtx_);
@@ -518,18 +518,18 @@ boost::json::value AgentServer::executeTool(const std::string& name, const boost
 
     auto& a = args.as_object();
 
-    if (name == "open_app") {
-        std::string appName = a.at("app").as_string().c_str();
+    if (name == "open_plugin") {
+        std::string pluginName = a.at("plugin").as_string().c_str();
         std::string config = boost::json::serialize(args);
-        AppManager::instance().openApp(appName, config);
+        PluginManager::instance().openPlugin(pluginName, config);
         boost::json::object agentMsg;
         agentMsg["type"] = "agent";
-        agentMsg["action"] = "open_app";
-        agentMsg["app"] = appName;
+        agentMsg["action"] = "open_plugin";
+        agentMsg["plugin"] = pluginName;
         pushOutput(std::move(agentMsg));
-        result["msg"] = "opened " + appName;
-    } else if (name == "control_app") {
-        std::string appName = a.at("app").as_string().c_str();
+        result["msg"] = "opened " + pluginName;
+    } else if (name == "control_plugin") {
+        std::string pluginName = a.at("plugin").as_string().c_str();
         std::string cmdStr;
         if (a.contains("coord")) {
             auto& coord = a.at("coord").as_array();
@@ -550,21 +550,19 @@ boost::json::value AgentServer::executeTool(const std::string& name, const boost
         }
 
         bool found = false;
-        if (AppManager::instance().getAppState(appName).is_null()) {
-            auto mod = AppModuleCache::instance().load(appName);
+        if (PluginManager::instance().getPluginState(pluginName).is_null()) {
+            auto mod = PluginCache::instance().load(pluginName);
             if (mod) {
-                auto handle = mod.create("{}");
-                if (handle) {
-                    char* raw = mod.app_process(handle.get(), cmdStr.c_str());
-                    if (raw) {
-                        result["result"] = boost::json::parse(raw);
-                        mod.app_free_string(raw);
-                    }
+                auto plugin = mod.createInstance("{}");
+                if (plugin) {
+                    std::string raw = plugin.process(cmdStr);
+                    try { result["result"] = boost::json::parse(raw); }
+                    catch (...) { result["result"] = raw; }
                     found = true;
                 }
             }
         } else {
-            auto r = AppManager::instance().controlApp(appName, cmdStr);
+            auto r = PluginManager::instance().controlPlugin(pluginName, cmdStr);
             if (!r.is_null()) {
                 result["result"] = r;
                 found = true;
@@ -573,33 +571,33 @@ boost::json::value AgentServer::executeTool(const std::string& name, const boost
 
         if (!found) {
             result["success"] = false;
-            result["msg"] = "no active session for " + appName;
+            result["msg"] = "no active session for " + pluginName;
         }
 
         boost::json::object agentMsg;
         agentMsg["type"] = "agent";
-        agentMsg["action"] = "control_app";
-        agentMsg["app"] = appName;
+        agentMsg["action"] = "control_plugin";
+        agentMsg["plugin"] = pluginName;
         pushOutput(std::move(agentMsg));
-    } else if (name == "close_app") {
-        std::string appName = a.at("app").as_string().c_str();
-        AppManager::instance().closeApp(appName);
+    } else if (name == "close_plugin") {
+        std::string pluginName = a.at("plugin").as_string().c_str();
+        PluginManager::instance().closePlugin(pluginName);
         boost::json::object agentMsg;
         agentMsg["type"] = "agent";
-        agentMsg["action"] = "close_app";
-        agentMsg["app"] = appName;
+        agentMsg["action"] = "close_plugin";
+        agentMsg["plugin"] = pluginName;
         if (a.contains("window_id") && a.at("window_id").is_string())
             agentMsg["window_id"] = a.at("window_id");
         pushOutput(std::move(agentMsg));
-        result["msg"] = "closed " + appName;
-    } else if (name == "get_app_state") {
-        std::string appName = a.at("app").as_string().c_str();
-        auto state = AppManager::instance().getAppState(appName);
+        result["msg"] = "closed " + pluginName;
+    } else if (name == "get_plugin_state") {
+        std::string pluginName = a.at("plugin").as_string().c_str();
+        auto state = PluginManager::instance().getPluginState(pluginName);
         if (!state.is_null()) {
             result["state"] = state;
         } else {
             result["success"] = false;
-            result["msg"] = "no active session for " + appName;
+            result["msg"] = "no active session for " + pluginName;
         }
     } else if (name == "chat_send") {
         std::string text = a.at("text").as_string().c_str();
@@ -608,7 +606,7 @@ boost::json::value AgentServer::executeTool(const std::string& name, const boost
             auto targetSess = SessionManager::instance().findSession("chat", target);
             if (targetSess) {
                 std::string cmd = "{\"text\":\"" + text + "\"}";
-                targetSess->call_app_process(cmd);
+                targetSess->call_plugin_process(cmd);
                 result["result"] = "sent to chat-" + std::to_string(target);
             } else {
                 result["success"] = false;
@@ -617,7 +615,7 @@ boost::json::value AgentServer::executeTool(const std::string& name, const boost
         } else {
             boost::json::object cmd;
             cmd["text"] = text;
-            auto r = AppManager::instance().controlApp("chat", boost::json::serialize(cmd));
+            auto r = PluginManager::instance().controlPlugin("chat", boost::json::serialize(cmd));
             result["result"] = r.is_null() ? boost::json::value("sent") : r;
         }
     } else if (name == "file_list") {
@@ -625,7 +623,7 @@ boost::json::value AgentServer::executeTool(const std::string& name, const boost
         boost::json::object cmd;
         cmd["action"] = "list";
         cmd["path"] = path;
-        auto r = AppManager::instance().controlApp("filemanager", boost::json::serialize(cmd));
+        auto r = PluginManager::instance().controlPlugin("filemanager", boost::json::serialize(cmd));
         if (!r.is_null()) result["entries"] = r;
         else result["success"] = false;
     } else if (name == "file_read") {
@@ -633,7 +631,7 @@ boost::json::value AgentServer::executeTool(const std::string& name, const boost
         boost::json::object cmd;
         cmd["action"] = "read";
         cmd["path"] = path;
-        auto r = AppManager::instance().controlApp("filemanager", boost::json::serialize(cmd));
+        auto r = PluginManager::instance().controlPlugin("filemanager", boost::json::serialize(cmd));
         if (!r.is_null()) result["file"] = r;
         else result["success"] = false;
     } else if (name == "file_write") {
@@ -643,7 +641,7 @@ boost::json::value AgentServer::executeTool(const std::string& name, const boost
         cmd["action"] = "write";
         cmd["path"] = path;
         cmd["content"] = content;
-        auto r = AppManager::instance().controlApp("filemanager", boost::json::serialize(cmd));
+        auto r = PluginManager::instance().controlPlugin("filemanager", boost::json::serialize(cmd));
         if (!r.is_null()) result["result"] = r;
         else result["success"] = false;
         result["msg"] = std::string("written to ") + path;
@@ -652,7 +650,7 @@ boost::json::value AgentServer::executeTool(const std::string& name, const boost
         boost::json::object cmd;
         cmd["action"] = "mkdir";
         cmd["path"] = path;
-        auto r = AppManager::instance().controlApp("filemanager", boost::json::serialize(cmd));
+        auto r = PluginManager::instance().controlPlugin("filemanager", boost::json::serialize(cmd));
         if (!r.is_null()) result["result"] = r;
         else result["success"] = false;
         result["msg"] = std::string("mkdir ") + path;
@@ -661,7 +659,7 @@ boost::json::value AgentServer::executeTool(const std::string& name, const boost
         boost::json::object cmd;
         cmd["action"] = "remove";
         cmd["path"] = path;
-        auto r = AppManager::instance().controlApp("filemanager", boost::json::serialize(cmd));
+        auto r = PluginManager::instance().controlPlugin("filemanager", boost::json::serialize(cmd));
         if (!r.is_null()) result["result"] = r;
         else result["success"] = false;
         result["msg"] = std::string("removed ") + path;
@@ -670,7 +668,7 @@ boost::json::value AgentServer::executeTool(const std::string& name, const boost
         boost::json::object cmd;
         cmd["action"] = "exec_sync";
         cmd["command"] = command;
-        auto r = AppManager::instance().controlApp("terminal", boost::json::serialize(cmd));
+        auto r = PluginManager::instance().controlPlugin("terminal", boost::json::serialize(cmd));
         if (!r.is_null()) result["output"] = r;
         else result["success"] = false;
     } else if (name == "terminal_stdin") {
@@ -678,12 +676,12 @@ boost::json::value AgentServer::executeTool(const std::string& name, const boost
         boost::json::object cmd;
         cmd["action"] = "stdin";
         cmd["data"] = data;
-        auto r = AppManager::instance().controlApp("terminal", boost::json::serialize(cmd));
+        auto r = PluginManager::instance().controlPlugin("terminal", boost::json::serialize(cmd));
         if (!r.is_null()) result["result"] = r;
         else result["success"] = false;
         result["msg"] = "input sent to terminal";
     } else if (name == "list_active_windows") {
-        auto windows = AppManager::instance().listActiveWindows();
+        auto windows = PluginManager::instance().listActiveWindows();
         result["windows"] = windows;
         result["count"] = static_cast<int64_t>(windows.size());
     } else {
@@ -727,21 +725,21 @@ void AgentServer::handleToolCalls(const std::vector<boost::json::value>& tool_ca
     }
 }
 
-void AgentServer::onAppStateChange(const std::string& appName, const boost::json::value& state)
+void AgentServer::onPluginStateChange(const std::string& pluginName, const boost::json::value& state)
 {
-    AGENT_LOG("[state]", "app: " << appName << " state changed");
-    injectStateIntoHistory(appName, state);
+    AGENT_LOG("[state]", "plugin: " << pluginName << " state changed");
+    injectStateIntoHistory(pluginName, state);
 }
 
-void AgentServer::injectStateIntoHistory(const std::string& appName, const boost::json::value& state)
+void AgentServer::injectStateIntoHistory(const std::string& pluginName, const boost::json::value& state)
 {
     std::lock_guard<std::mutex> lock(mtx_);
     boost::json::object sysMsg;
     sysMsg["role"] = "system";
-    std::string content = "应用 " + appName + " 状态变�? " + boost::json::serialize(state);
+    std::string content = "应用 " + pluginName + " 状态变�? " + boost::json::serialize(state);
     sysMsg["content"] = std::move(content);
     history_.push_back(std::move(sysMsg));
-    AGENT_LOG("[state]", "injected state for " << appName << " into history");
+    AGENT_LOG("[state]", "injected state for " << pluginName << " into history");
 }
 
 void AgentServer::processNextInQueue()
@@ -760,7 +758,7 @@ void AgentServer::processNextInQueue()
 
 void AgentServer::pushOutput(boost::json::value val)
 {
-    app_output_fn cb = nullptr;
+    plugin_output_fn cb = nullptr;
     void* udata = nullptr;
     std::string s;
     {
@@ -772,12 +770,12 @@ void AgentServer::pushOutput(boost::json::value val)
     if (cb) cb(udata, s.c_str());
 }
 
-bool AgentServer::openApp(const std::string& name, const std::string& paramsJson)
+bool AgentServer::openPlugin(const std::string& name, const std::string& paramsJson)
 {
     boost::json::object out;
     out["type"] = "agent";
-    out["action"] = "open_app";
-    out["app"] = name;
+    out["action"] = "open_plugin";
+    out["plugin"] = name;
     try {
         out["params"] = boost::json::parse(paramsJson);
     } catch (...) {
@@ -787,12 +785,12 @@ bool AgentServer::openApp(const std::string& name, const std::string& paramsJson
     return true;
 }
 
-bool AgentServer::controlApp(const std::string& name, const std::string& commandJson)
+bool AgentServer::controlPlugin(const std::string& name, const std::string& commandJson)
 {
     boost::json::object out;
     out["type"] = "agent";
-    out["action"] = "control_app";
-    out["app"] = name;
+    out["action"] = "control_plugin";
+    out["plugin"] = name;
     try {
         out["command"] = boost::json::parse(commandJson);
     } catch (...) {
@@ -802,12 +800,12 @@ bool AgentServer::controlApp(const std::string& name, const std::string& command
     return true;
 }
 
-bool AgentServer::closeApp(const std::string& name)
+bool AgentServer::closePlugin(const std::string& name)
 {
     boost::json::object out;
     out["type"] = "agent";
-    out["action"] = "close_app";
-    out["app"] = name;
+    out["action"] = "close_plugin";
+    out["plugin"] = name;
     pushOutput(std::move(out));
     return true;
 }
@@ -816,7 +814,7 @@ bool AgentServer::chatSend(const std::string& text)
 {
     boost::json::object cmd;
     cmd["text"] = text;
-    auto r = AppManager::instance().controlApp("chat", boost::json::serialize(cmd));
+    auto r = PluginManager::instance().controlPlugin("chat", boost::json::serialize(cmd));
     return !r.is_null();
 }
 
@@ -825,7 +823,7 @@ bool AgentServer::fileList(const std::string& path)
     boost::json::object cmd;
     cmd["action"] = "list";
     cmd["path"] = path;
-    auto r = AppManager::instance().controlApp("filemanager", boost::json::serialize(cmd));
+    auto r = PluginManager::instance().controlPlugin("filemanager", boost::json::serialize(cmd));
     return !r.is_null();
 }
 
@@ -834,7 +832,7 @@ bool AgentServer::fileRead(const std::string& path)
     boost::json::object cmd;
     cmd["action"] = "read";
     cmd["path"] = path;
-    auto r = AppManager::instance().controlApp("filemanager", boost::json::serialize(cmd));
+    auto r = PluginManager::instance().controlPlugin("filemanager", boost::json::serialize(cmd));
     return !r.is_null();
 }
 
@@ -844,7 +842,7 @@ bool AgentServer::fileWrite(const std::string& path, const std::string& content)
     cmd["action"] = "write";
     cmd["path"] = path;
     cmd["content"] = content;
-    auto r = AppManager::instance().controlApp("filemanager", boost::json::serialize(cmd));
+    auto r = PluginManager::instance().controlPlugin("filemanager", boost::json::serialize(cmd));
     return !r.is_null();
 }
 
@@ -853,7 +851,7 @@ bool AgentServer::fileMkdir(const std::string& path)
     boost::json::object cmd;
     cmd["action"] = "mkdir";
     cmd["path"] = path;
-    auto r = AppManager::instance().controlApp("filemanager", boost::json::serialize(cmd));
+    auto r = PluginManager::instance().controlPlugin("filemanager", boost::json::serialize(cmd));
     return !r.is_null();
 }
 
@@ -862,7 +860,7 @@ bool AgentServer::fileRemove(const std::string& path)
     boost::json::object cmd;
     cmd["action"] = "remove";
     cmd["path"] = path;
-    auto r = AppManager::instance().controlApp("filemanager", boost::json::serialize(cmd));
+    auto r = PluginManager::instance().controlPlugin("filemanager", boost::json::serialize(cmd));
     return !r.is_null();
 }
 
@@ -871,7 +869,7 @@ bool AgentServer::terminalExec(const std::string& command)
     boost::json::object cmd;
     cmd["action"] = "exec_sync";
     cmd["command"] = command;
-    auto r = AppManager::instance().controlApp("terminal", boost::json::serialize(cmd));
+    auto r = PluginManager::instance().controlPlugin("terminal", boost::json::serialize(cmd));
     return !r.is_null();
 }
 
@@ -880,7 +878,7 @@ bool AgentServer::terminalStdin(const std::string& data)
     boost::json::object cmd;
     cmd["action"] = "stdin";
     cmd["data"] = data;
-    auto r = AppManager::instance().controlApp("terminal", boost::json::serialize(cmd));
+    auto r = PluginManager::instance().controlPlugin("terminal", boost::json::serialize(cmd));
     return !r.is_null();
 }
 
@@ -903,7 +901,7 @@ void AgentServer::destroy()
     cancelled_ = true;
     stop();
     if (subHandle_) {
-        AppManager::instance().unsubscribe(subHandle_);
+        PluginManager::instance().unsubscribe(subHandle_);
         subHandle_ = 0;
     }
     {
@@ -958,7 +956,7 @@ done:
 
 extern "C" {
 
-void* app_create(const char* configJson)
+void* plugin_create(const char* configJson)
 {
     (void)configJson;
     auto ptr = std::make_shared<agent::AgentServer>();
@@ -966,27 +964,27 @@ void* app_create(const char* configJson)
     return ptr.get();
 }
 
-void app_destroy(void* p)
+void plugin_destroy(void* p)
 {
     static_cast<agent::AgentServer*>(p)->destroy();
 }
 
-void app_set_output(void* p, app_output_fn cb, void* userdata)
+void plugin_set_output(void* p, plugin_output_fn cb, void* userdata)
 {
     static_cast<agent::AgentServer*>(p)->setOutput(cb, userdata);
 }
 
-void app_set_io_context(void* p, void* ioCtx)
+void plugin_set_io_context(void* p, void* ioCtx)
 {
     static_cast<agent::AgentServer*>(p)->setIoContext(ioCtx);
 }
 
-void app_on_input(void* p, const char* inputJson)
+void plugin_on_input(void* p, const char* inputJson)
 {
     static_cast<agent::AgentServer*>(p)->onInput(inputJson);
 }
 
-char* app_process(void* p, const char* inputJson)
+char* plugin_process(void* p, const char* inputJson)
 {
     std::string result = static_cast<agent::AgentServer*>(p)->process(inputJson);
     char* buf = static_cast<char*>(std::malloc(result.size() + 1));
@@ -994,12 +992,12 @@ char* app_process(void* p, const char* inputJson)
     return buf;
 }
 
-void app_free_string(char* str)
+void plugin_free_string(char* str)
 {
     std::free(str);
 }
 
-int app_is_done(void* p)
+int plugin_is_done(void* p)
 {
     return static_cast<agent::AgentServer*>(p)->isDone() ? 1 : 0;
 }

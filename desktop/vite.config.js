@@ -12,7 +12,7 @@ export default defineConfig({
   cacheDir: 'node_modules/.vite',
   resolve: {
     alias: {
-      '@apps': resolve(__dirname, 'app'),
+      '@plugins': resolve(__dirname, 'plugin'),
     },
   },
   server: {

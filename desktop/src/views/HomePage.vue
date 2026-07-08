@@ -2,14 +2,14 @@
   <div class="desktop" @contextmenu.prevent>
     <div class="desktopCont">
       <div
-        v-for="app in apps"
-        :key="app.name"
-        class="dskApp"
+        v-for="plugin in plugins"
+        :key="plugin.name"
+        class="dskPlugin"
         tabindex="0"
-        @click="openApp(app)"
+        @click="openPlugin(plugin)"
       >
-        <div class="dskIcon" v-html="app.icon"></div>
-        <div class="appName">{{ app.name }}</div>
+        <div class="dskIcon" v-html="plugin.icon"></div>
+        <div class="pluginName">{{ plugin.name }}</div>
       </div>
     </div>
 
@@ -120,10 +120,10 @@ import { APPS } from '../config/games.js'
 
 const router = useRouter()
 
-const apps = Object.entries(APPS).map(([key, app]) => ({
-  name: app.info.name,
+const plugins = Object.entries(APPS).map(([key, plugin]) => ({
+  name: plugin.info.name,
   url: `/${key}`,
-  icon: app.info.icon,
+  icon: plugin.info.icon,
 }))
 
 const windows = reactive({})
@@ -134,11 +134,11 @@ function genWindowId() {
   return 'win_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8)
 }
 
-function nextAppIndex(appKey) {
+function nextPluginIndex(pluginKey) {
   let maxN = 0
   for (const id in windows) {
     const w = windows[id]
-    if (w.appKey === appKey) {
+    if (w.pluginKey === pluginKey) {
       if (w.tabs) {
         for (const tab of w.tabs) {
           const m = tab.name.match(/-(\d+)$/)
@@ -169,7 +169,7 @@ const topZ = computed(() => {
   return max
 })
 
-function openApp(app, opts) {
+function openPlugin(plugin, opts) {
   const silent = opts?.silent
   const count = Object.keys(windows).length
   const cascade = (count * 30) % 240
@@ -177,19 +177,19 @@ function openApp(app, opts) {
 
   for (const id in windows) {
     const w = windows[id]
-    if (w.appKey === app.url) {
+    if (w.pluginKey === plugin.url) {
       if (!w.tabs) {
-        const n = nextAppIndex(app.url)
-        w.tabs = [{ name: `${app.name}-${n}`, icon: w.icon, src: w.src }]
-        w.name = `${app.name}-${n}`
+        const n = nextPluginIndex(plugin.url)
+        w.tabs = [{ name: `${plugin.name}-${n}`, icon: w.icon, src: w.src }]
+        w.name = `${plugin.name}-${n}`
       }
-      const tabName = opts?.tabName || `${app.name}-${nextAppIndex(app.url)}`
+      const tabName = opts?.tabName || `${plugin.name}-${nextPluginIndex(plugin.url)}`
       const uniqueId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
       const params = `_t=${uniqueId}`
       const tabSrc = opts?.tabParams
-        ? iframeSrcWithWid(app.url + opts.tabParams + '&' + params, w.windowId, tabName, '👤')
-        : iframeSrcWithWid(app.url + '?' + params, w.windowId, tabName, '👤')
-      w.tabs.push({ name: tabName, icon: app.icon, src: tabSrc })
+        ? iframeSrcWithWid(plugin.url + opts.tabParams + '&' + params, w.windowId, tabName, '👤')
+        : iframeSrcWithWid(plugin.url + '?' + params, w.windowId, tabName, '👤')
+      w.tabs.push({ name: tabName, icon: plugin.icon, src: tabSrc })
       w.activeTab = w.tabs.length - 1
       w.name = tabName
       if (!silent) w.zIndex = ++zSeq
@@ -200,15 +200,15 @@ function openApp(app, opts) {
 
   const id = `w${winIdSeq++}`
   const windowId = genWindowId()
-  const winName = `${app.name}-${nextAppIndex(app.url)}`
-  const initialTab = { name: winName, icon: app.icon, src: iframeSrcWithWid(app.url, windowId, winName, '👤') }
+  const winName = `${plugin.name}-${nextPluginIndex(plugin.url)}`
+  const initialTab = { name: winName, icon: plugin.icon, src: iframeSrcWithWid(plugin.url, windowId, winName, '👤') }
   windows[id] = {
-    appKey: app.url,
+    pluginKey: plugin.url,
     name: winName,
-    icon: app.icon,
-    url: app.url,
+    icon: plugin.icon,
+    url: plugin.url,
     windowId,
-    src: iframeSrcWithWid(app.url, windowId, winName, '👤'),
+    src: iframeSrcWithWid(plugin.url, windowId, winName, '👤'),
     x: 40 + cascade,
     y: 40 + cascade,
     w: fixed ? 560 : 820,
@@ -238,7 +238,7 @@ function closeWindow(id) {
     window.parent.postMessage({
       type: 'agent_close_window',
       window_id: win.windowId,
-      app: win.appKey,
+      plugin: win.pluginKey,
     }, '*')
   }
   setTimeout(() => {
@@ -311,7 +311,7 @@ function detachTab(id, ti, x, y) {
   const newTab = { name: newName, icon: tab.icon, src: newSrc }
   const newId = `w${winIdSeq++}`
   windows[newId] = {
-    appKey: win.appKey,
+    pluginKey: win.pluginKey,
     name: newName,
     icon: tab.icon,
     url: win.url,
@@ -455,27 +455,27 @@ function goHome() { router.push('/') }
 
 function onPostMessage(e) {
   if (e.data?.type === 'openFile') {
-    openApp({
+    openPlugin({
       name: e.data.name,
       icon: '<svg viewBox="0 0 48 48" width="18" height="18"><path d="M8 6h16l8 8v28H8V6z" fill="#4fc3f7"/><path d="M24 6v8h8" fill="#29b6f6"/></svg>',
       url: `/view?url=${encodeURIComponent(e.data.url)}&name=${encodeURIComponent(e.data.name)}&kind=${e.data.kind}`,
     }, e.data.kind === 'audio' ? { fixed: true } : undefined)
   }
-  if (e.data?.type === 'agent_open_app') {
-    const appName = e.data.app
-    const appInfo = APPS[appName]?.info
-    if (appInfo) {
-      openApp({
-        name: appInfo.name,
-        icon: appInfo.icon,
-        url: `/${appName}`,
+  if (e.data?.type === 'agent_open_plugin') {
+    const pluginName = e.data.plugin
+    const pluginInfo = APPS[pluginName]?.info
+    if (pluginInfo) {
+      openPlugin({
+        name: pluginInfo.name,
+        icon: pluginInfo.icon,
+        url: `/${pluginName}`,
       }, { silent: true })
     }
   }
-  if (e.data?.type === 'agent_control_app') {
-    const appName = e.data.app
+  if (e.data?.type === 'agent_control_plugin') {
+    const pluginName = e.data.plugin
     for (const id in windows) {
-      if (windows[id].appKey === `/${appName}`) {
+      if (windows[id].pluginKey === `/${pluginName}`) {
         const iframe = document.querySelector(`.win-window[data-wid="${id}"] iframe`)
         if (iframe && iframe.contentWindow) {
           iframe.contentWindow.postMessage({
@@ -488,8 +488,8 @@ function onPostMessage(e) {
       }
     }
   }
-  if (e.data?.type === 'agent_close_app') {
-    const appName = e.data.app
+  if (e.data?.type === 'agent_close_plugin') {
+    const pluginName = e.data.plugin
     const targetWid = e.data.window_id
     if (targetWid) {
       for (const id in windows) {
@@ -500,7 +500,7 @@ function onPostMessage(e) {
       }
     }
     for (const id in windows) {
-      if (windows[id].appKey === `/${appName}`) {
+      if (windows[id].pluginKey === `/${pluginName}`) {
         const win = windows[id]
         if (win.tabs && win.tabs.length > 1) {
           closeTab(id, 0)
@@ -566,7 +566,7 @@ body {
   z-index: 1;
 }
 
-.dskApp {
+.dskPlugin {
   margin: 4px 12px;
   height: 84px;
   width: 74px;
@@ -581,12 +581,12 @@ body {
   outline: none;
 }
 
-.dskApp:focus {
+.dskPlugin:focus {
   background: rgba(255,255,255,0.24);
   border: 1px dotted white;
 }
 
-.dskApp:hover {
+.dskPlugin:hover {
   background: rgba(255,255,255,0.12);
 }
 
@@ -599,7 +599,7 @@ body {
   pointer-events: none;
 }
 
-.appName {
+.pluginName {
   text-align: center;
   color: #fafafa;
   margin-top: 4px;
