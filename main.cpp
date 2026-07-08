@@ -1,13 +1,4 @@
-/**
- * AImeath �?统一 WebSocket 服务端（全异步架构）
- *
- * 端口�?config.json �?"port" 字段读取，默�?3001�?
- * 每个连接�?shared_ptr<Session> 管理生命周期�?
- * 通过 async_read / async_write 处理 WebSocket 消息�?
- * Session / Listener 定义�?module/core/include/ws_server.hpp
- */
-
-#include <iostream>
+#include <fstream>
 #include <thread>
 #include <memory>
 
@@ -26,7 +17,8 @@ namespace beast = boost::beast;
 
 int main()
 {
-    Logger logger(std::cout, Logger::INFO);
+    std::ofstream logFile("logserver.log", std::ios::app);
+    Logger logger(logFile, Logger::INFO);
 
     int port = Config::instance().port();
     int io_threads = Config::instance().ioThreads();
