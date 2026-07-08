@@ -672,4 +672,9 @@ int app_is_done(void* p)
     return static_cast<ChatApp*>(p)->done ? 1 : 0;
 }
 
+char* app_get_info()
+{
+    return strdup(R"({"name":"chat","display_name":"聊天","type":"chat"})");
+}
+
 } // extern "C"

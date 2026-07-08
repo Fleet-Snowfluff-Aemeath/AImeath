@@ -1,0 +1,1 @@
+{ "name": "chat", "display_name": "聊天", "type": "chat", "library": "libchat.so" }

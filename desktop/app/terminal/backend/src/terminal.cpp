@@ -248,4 +248,9 @@ char* app_process(void* p, const char* input_json)
     }
 }
 
+char* app_get_info()
+{
+    return strdup(R"({"name":"terminal","display_name":"终端","type":"terminal"})");
+}
+
 } // extern "C"

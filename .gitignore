@@ -6,3 +6,4 @@ desktop/dist
 config.json
 private/
 .opencode
+log

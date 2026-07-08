@@ -1,0 +1,1 @@
+{ "name": "terminal", "display_name": "终端", "type": "terminal", "library": "libterminal.so" }

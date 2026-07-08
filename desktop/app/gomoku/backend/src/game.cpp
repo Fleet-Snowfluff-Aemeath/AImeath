@@ -105,6 +105,8 @@ std::string GomokuGame::getState() const
     return boost::json::serialize(obj);
 }
 
+#define GAME_NAME "gomoku"
+#define GAME_DISPLAY_NAME "五子棋"
 #define GAME_CLASS GomokuGame
 #undef GAME_CONSTRUCT
 #define GAME_CONSTRUCT(w, h) new GomokuGame(w)

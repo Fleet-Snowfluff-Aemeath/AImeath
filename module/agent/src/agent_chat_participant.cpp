@@ -11,6 +11,7 @@
 #include "llm_utils.hpp"
 #include "config.hpp"
 #include "tool_registry.hpp"
+#include "plugin_cache.hpp"
 
 static boost::json::array s_toolDefs;
 
@@ -40,8 +41,21 @@ void AgentChatParticipant::doLlmRound(const boost::json::array& msgs, int round)
         profile_.temperature, profile_.max_tokens);
 
     if (profile_.enable_tools) {
-        if (s_toolDefs.empty())
+        if (s_toolDefs.empty()) {
             s_toolDefs = agent::loadToolsFromYaml(std::string(PROJ_ROOT) + "/module/agent/config/tools.yml");
+            auto& appInfoMap = PluginCache::instance().appInfo();
+            for (auto& [name, info] : appInfoMap) {
+                if (!info.toolsJson.empty()) {
+                    try {
+                        auto parsed = boost::json::parse(info.toolsJson);
+                        if (parsed.is_array()) {
+                            for (auto& t : parsed.as_array())
+                                s_toolDefs.push_back(t);
+                        }
+                    } catch (...) {}
+                }
+            }
+        }
         llm::inject_tools(body, true, profile_.tools, s_toolDefs);
     }
 

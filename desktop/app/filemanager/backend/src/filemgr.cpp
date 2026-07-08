@@ -168,4 +168,9 @@ char* app_process(void*, const char* input_json)
     }
 }
 
+char* app_get_info()
+{
+    return strdup(R"({"name":"filemanager","display_name":"文件管理器","type":"filemanager"})");
+}
+
 } // extern "C"

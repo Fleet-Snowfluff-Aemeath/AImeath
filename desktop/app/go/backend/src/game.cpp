@@ -119,6 +119,8 @@ std::string GoGame::getState() const
     return boost::json::serialize(obj);
 }
 
+#define GAME_NAME "go"
+#define GAME_DISPLAY_NAME "围棋"
 #define GAME_CLASS GoGame
 #undef GAME_CONSTRUCT
 #define GAME_CONSTRUCT(w, h) new GoGame(w)

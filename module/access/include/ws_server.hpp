@@ -165,7 +165,7 @@ private:
     Timer::TimerId ping_timer_id_{0};
     std::chrono::seconds ping_interval_;
     int missed_pongs_{0};
-    static constexpr int MAX_MISSED_PONGS = 2;
+    static constexpr int MAX_MISSED_PONGS = 5;
     std::shared_ptr<std::atomic<size_t>> connection_count_;
 };
 

@@ -89,6 +89,13 @@ struct _GameAppCtx
 #define GAME_CONSTRUCT(w, h) new GAME_CLASS(w, h)
 #endif
 
+#ifndef GAME_NAME
+#define GAME_NAME "unknown"
+#endif
+#ifndef GAME_DISPLAY_NAME
+#define GAME_DISPLAY_NAME GAME_NAME
+#endif
+
 // ---- Unified app_* C ABI (call once per game .cpp) ----
 
 #define APP_GAME_API_COMMON()                                      \
@@ -195,5 +202,26 @@ int app_is_done(void* p)                                           \
 {                                                                  \
     return static_cast<_GameAppCtx*>(p)->done ? 1 : 0;             \
 }                                                                  \
-                                                                   \
+                                                                    \
+char* app_get_info(void)                                           \
+{                                                                  \
+    const char* json =                                              \
+        "{\"name\":\"" GAME_NAME "\","                             \
+        "\"display_name\":\"" GAME_DISPLAY_NAME "\","              \
+        "\"type\":\"game\","                                       \
+        "\"tools\":["                                              \
+        "{\"name\":\"control_app\","                               \
+        "\"description\":\"Control the game\","                     \
+        "\"handler\":\"game_tick\","                               \
+        "\"params\":{\"type\":\"object\",\"properties\":{"         \
+        "\"value\":{\"type\":\"integer\",\"description\":\"Direction: 0=up 1=down 2=left 3=right\"}"\
+        "},\"required\":[\"value\"]}},"                             \
+        "{\"name\":\"get_app_state\","                              \
+        "\"description\":\"Get current game state\","               \
+        "\"handler\":\"game_state\","                               \
+        "\"params\":{\"type\":\"object\",\"properties\":{}}}"       \
+        "]}";                                                       \
+    return _gameStrdup(json);                                       \
+}                                                                  \
+                                                                    \
 } /* extern "C" */

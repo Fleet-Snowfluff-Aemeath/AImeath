@@ -94,5 +94,7 @@ std::string PacmanGame::getState() const
     return boost::json::serialize(obj);
 }
 
+#define GAME_NAME "pacman"
+#define GAME_DISPLAY_NAME "吃豆人"
 #define GAME_CLASS PacmanGame
 APP_GAME_API_COMMON()

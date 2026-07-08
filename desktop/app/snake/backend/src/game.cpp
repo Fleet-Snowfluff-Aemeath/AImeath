@@ -83,5 +83,7 @@ std::string SnakeGame::getState() const
     return boost::json::serialize(obj);
 }
 
+#define GAME_NAME "snake"
+#define GAME_DISPLAY_NAME "贪吃蛇"
 #define GAME_CLASS SnakeGame
 APP_GAME_API_COMMON()
